@@ -71,3 +71,38 @@ fidelity. A multi-hour soak remains future work.
 
 The original ClawPetCube checkout's three pre-existing firmware edits were not
 modified. Usagekani runs from its separate clone and implementation branch.
+
+## Follow-up: live Claude HTTPS exporter — 2026-11-22
+
+The user supplied a private Claude usage exporter and bearer key. Its public
+health check returned HTTP 200; unauthenticated usage returned HTTP 401 and
+authenticated usage returned HTTP 200. The real schema matches the documented
+`five_hour.utilization`, `seven_day.utilization`, ISO `resets_at` and `fetched_at`
+fields. The real response reported plan `pro`, 20% five-hour and 15% weekly;
+extra optional per-model, credit and breakdown fields are intentionally ignored.
+
+The PC companion now polls this configured HTTPS source every 30 seconds. The
+original source timestamp controls freshness. Transport/API failures preserve
+prior values, mark the provider error/auth state and back off to at most five
+minutes. A successful older cached reply clears collection errors while keeping
+newer known quota values and their original observation time.
+
+Only local PC configuration contains the private endpoint and key. The bearer
+header goes to Windows curl over stdin, with user curl configuration disabled,
+TLS certificate verification enabled and no redirect following. Windows' trusted
+HTTPS client was required because the installed MinGW Python CA store could not
+validate this service's issuer. No TLS verification was bypassed.
+
+The authenticated PC LAN feed reported Claude 20% / 15% with source age 13 seconds.
+COM6 was no longer present, so verification used the still-connected ST-LINK:
+`Usage_Debug` contained Claude quota words 200/150, validity mask 15 (all four
+windows available), online state and increasing successful polls. Existing
+firmware handled the new source without rebuilding or flashing. Clawd and the
+approved two-page display are unchanged.
+
+The expanded suite has 23 passing tests, including HTTPS command/key handling,
+malformed-response recovery, cached-source age, auth recovery and all earlier
+native C transport/parser checks. Independent review findings were addressed
+with regressions. The companion was restarted on the reviewed code and left
+running. Direct LCD appearance remains unphotographed; live Claude acquisition
+is now verified.

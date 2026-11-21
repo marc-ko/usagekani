@@ -1,6 +1,6 @@
 # Usagekani
 
-Usagekani is a small desk device for monitoring **Codex and Claude Code usage**,
+Usagekani is a small desk device for monitoring **Codex and Claude subscription usage**,
 built on the ClawPetCube STM32 hardware and firmware. It keeps our existing
 orange pixel **Clawd mascot**.
 
@@ -8,12 +8,13 @@ Read [Usagekani setup](docs/USAGEKANI_SETUP.md) to run the PC companion and buil
 the firmware. The [product brief](USAGEKANI_BRIEF.md) records the original intent
 and design research.
 
-**Implemented:** a Python companion reads Codex quotas and Claude Code status-line
-reports, then serves a token-protected private LAN feed to the cube. The 240x240
+**Implemented:** a Python companion reads Codex quotas and an optional HTTPS
+Claude usage exporter (or Claude Code status-line reports when unconfigured),
+then serves a token-protected private LAN feed to the cube. The 240x240
 LVGL display rotates two provider pages with usage bars, reset countdowns, honest
 waiting/stale states, and the original Clawd. The PC companion starts at Windows
-login; no provider credentials are stored on the cube. Claude waits for its first
-real supported session report.
+login; no provider credentials are stored on the cube. Live Claude API readings
+do not require a running Claude Code session.
 
 The photos, status tables, configuration and bring-up notes below describe the
 inherited ClawPetCube implementation. They are useful hardware/build references,

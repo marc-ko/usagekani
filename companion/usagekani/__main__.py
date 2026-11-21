@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 from .claude import state_dir
+from .claude_api import collect as collect_claude_api
 from .codex import QuotaError, read_limits
 from .model import Store, normalize_codex, validate_cached_provider
 from .server import make_server
@@ -58,9 +59,16 @@ def main():
             stop.wait(60)
 
     def claude_loop():
+        use_api = bool(config.get('claude_usage_url') and config.get('claude_usage_key'))
+        failures = 0
         while not stop.is_set():
-            load_claude_cache(directory / 'claude.json', store, int(time.time()))
-            stop.wait(2)
+            if use_api:
+                succeeded = collect_claude_api(config, store)
+                failures = 0 if succeeded else failures + 1
+                stop.wait(30 if succeeded else min(300, 30 * 2 ** min(failures - 1, 4)))
+            else:
+                load_claude_cache(directory / 'claude.json', store, int(time.time()))
+                stop.wait(2)
 
     for collect in (codex_loop, claude_loop):
         threading.Thread(target=collect, daemon=True).start()

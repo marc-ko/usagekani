@@ -74,6 +74,11 @@ class Store:
         with self._lock:
             if value['observed_at'] >= self._values[provider]['observed_at']:
                 self._values[provider] = copy.deepcopy(value)
+            elif value['status'] in ('ok', 'waiting'):
+                # A successful cached response resolves a collection error,
+                # while newer known quota values and their age remain intact.
+                self._values[provider]['status'] = (
+                    'ok' if any(w is not None for w in self._values[provider]['windows']) else 'waiting')
 
     def fail(self, provider, status='error'):
         with self._lock:

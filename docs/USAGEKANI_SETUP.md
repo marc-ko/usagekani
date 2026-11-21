@@ -1,6 +1,6 @@
 # Usagekani setup
 
-Usagekani is a PC-on desk monitor for Codex and Claude Code subscription usage.
+Usagekani is a PC-on desk monitor for Codex and Claude subscription usage.
 The existing STM32F405/ESP8266 cube displays two rotating pages and retains the
 original orange pixel Clawd. It uses no cloud service of its own.
 
@@ -51,6 +51,39 @@ Run one companion instance. Logs are at
 logged. Stop the existing background companion before starting a foreground one.
 
 ## Claude readings
+
+### HTTPS usage exporter (preferred when configured)
+
+Add these fields to the local `%LOCALAPPDATA%/Usagekani/config.json`, preserving
+its existing device settings:
+
+```json
+{
+  "claude_usage_url": "https://your-usage-service.example/usage",
+  "claude_usage_key": "your-private-bearer-key"
+}
+```
+
+Restart only the Usagekani companion after changing these settings. The URL and
+key stay on the PC; they are not copied into firmware, logs, Git or the LAN
+response. HTTPS certificate verification stays enabled. Windows' bundled curl
+uses the OS certificate store; its default user configuration is disabled and
+the bearer header is supplied over stdin, not command-line arguments. Redirects
+are not followed.
+
+The API is sampled every 30 seconds. It must return ISO 8601 `fetched_at` and
+`five_hour`/`seven_day` objects with numeric `utilization` (percent used) and
+ISO 8601 `resets_at`. Extra model windows/spending fields are ignored for the
+two-bar display. Source `fetched_at` controls data age: serving the same cached
+response again never makes it fresh. Missing windows remain unavailable.
+
+HTTP 401 shows `Login required`; server/upstream/transport failures show provider
+unavailability while retaining the last known values. Failed polls back off
+from 30 seconds to at most five minutes; success restores the 30-second cadence.
+When configured, this API is authoritative and does not silently switch to
+older status-line readings on errors. No Claude Code session needs to be running.
+
+### Status-line fallback when no API is configured
 
 Restart an already-running Claude Code session after installing its status line.
 The first normal provider response supplies quota fields when the signed-in plan
