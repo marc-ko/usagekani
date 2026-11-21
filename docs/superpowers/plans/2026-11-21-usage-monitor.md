@@ -10,7 +10,11 @@ Spec: USAGEKANI_BRIEF.md and the UI approved in the conversation.
 - [x] Parse bounded JSON on MCU and replace OpenClaw polling with usage polling.
 - [x] Draw the approved Clawd header, two usage cards and rotating provider pages.
 - [x] Install local settings/Windows launcher, build, flash and verify hardware.
-- [ ] Review, document evidence, commit and push the implementation branch.
+- [x] Review, document evidence, commit and push the implementation branch.
+
+Delivered on `codex/usage-monitor`; draft review: https://github.com/marc-ko/usagekani/pull/1.
+Live Claude report acquisition and direct LCD visual inspection remain validation
+limits, recorded in docs/USAGEKANI_BRINGUP.md.
 
 Defaults: Codex every 60s, cube every 30s, page rotation every 8s, stale after
 300s. Data stays on the private LAN; provider credentials remain on the PC.
