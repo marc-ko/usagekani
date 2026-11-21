@@ -1,0 +1,136 @@
+# Usagekani setup
+
+Usagekani is a PC-on desk monitor for Codex and Claude Code subscription usage.
+The existing STM32F405/ESP8266 cube displays two rotating pages and retains the
+original orange pixel Clawd. It uses no cloud service of its own.
+
+## Windows companion
+
+Requires Python 3.12+, Codex CLI signed in to the intended ChatGPT account,
+Claude Code, and Git Bash (the standard Claude Code Windows shell).
+No Python packages are required.
+
+From the repository root:
+
+```powershell
+./scripts/install-companion.ps1
+./scripts/start-companion.ps1
+```
+
+The installer chooses the PC's private LAN interface. To select one explicitly,
+pass `-HostAddress <private-LAN-IP>` to the installer. Keep that address stable
+with a DHCP reservation; re-run installation and rebuild/reflash if it changes.
+
+The installer:
+
+- Saves local settings and the device pairing token under
+  `%LOCALAPPDATA%/Usagekani/`.
+- Adds a Claude Code status-line command using shell-safe paths. Unrelated
+  Claude settings remain intact; an unrelated existing status line is refused.
+  A pre-install backup is kept locally.
+- Creates `Usagekani.lnk` in the user's Startup folder, starting the companion
+  without a console at Windows login. It retries while the LAN interface is
+  unavailable.
+- Writes host/port/pairing values to ignored `app_config_local.h`, and updates
+  the parent configuration header's modification time so existing build
+  dependency files discover the newly created optional header.
+
+Allow inbound TCP port 8765 only for the Python companion on the private local
+subnet. Do not expose this HTTP feed to the public internet or forward the port.
+The ESP8266 AT firmware's HTTPS limitation is why the last hop uses LAN HTTP.
+The endpoint requires a device token; provider credentials never reach the cube.
+
+For foreground troubleshooting:
+
+```powershell
+python -m companion.usagekani
+```
+
+Run one companion instance. Logs are at
+`%LOCALAPPDATA%/Usagekani/companion.log`; no provider tokens or private hosts are
+logged. Stop the existing background companion before starting a foreground one.
+
+## Claude readings
+
+Restart an already-running Claude Code session after installing its status line.
+The first normal provider response supplies quota fields when the signed-in plan
+supports them. The adapter does not create prompts or call private usage APIs.
+Until then, the cube shows **Waiting for Claude**.
+
+The adapter saves usage fields only, not transcripts or credentials. It deduplicates
+identical quota reports per session and serializes writers so an old session
+redrawing cannot replace a newer account reading. Unchanged readings age
+conservatively; opening/redrawing the status line is not proof of an upstream
+quota refresh.
+
+## Firmware
+
+Set Wi-Fi locally in ignored `hal_firmware/Core/Inc/app_config_local.h`:
+
+```c
+#define VPC_WIFI_SSID "your-local-ssid"
+#define VPC_WIFI_PASSWORD "your-local-password"
+```
+
+The installer adds `USAGEKANI_HTTP_HOST`, `USAGEKANI_HTTP_PORT` and
+`USAGEKANI_DEVICE_TOKEN`. Never commit this header, compiled firmware containing
+local values, flash backups, or companion state.
+
+Use a separate CubeIDE workspace outside the repository directory when importing
+the project. Retain the project name `ClawPetCube` and its HAL Release target.
+After CubeIDE generates managed makefiles, prepend its bundled make and ARM GCC
+to PATH as described in the inherited build instructions, then run:
+
+```powershell
+make -C Release all
+```
+
+If creating local configuration manually after a previous build, force its
+discovery with `make -B -C Release all` once. Do not reuse a stale object compiled
+with empty default settings.
+
+Outputs remain `Release/ClawPetCube_HAL.elf` and `.hex`. Flash and verify via
+ST-LINK. SD-card initialization is intentionally bypassed: Usagekani does not
+use storage, and the inherited initialization blocked startup on the current
+board in `SD_FindSCR`.
+
+## Display and transport behavior
+
+- Provider pages rotate every eight seconds; Codex is teal and Claude orange.
+- Two bars show percentage used and reset countdowns. Window labels follow the
+  provider's actual duration; unavailable values show `--`.
+- Codex is sampled every 60 seconds; the cube polls every 30 seconds.
+- Reports older than five minutes are marked stale. Failed collection preserves
+  last-known values. A failed Claude cache cannot invalidate Codex.
+- Expired windows are dimmed and show `Refreshing`; they do not trigger active
+  quota warnings. The device never invents a reset to zero.
+- Clawd blinks, floats and wanders within its header area; concerned/sleepy
+  expressions communicate quota state alongside explicit text.
+- Continuous USART2 buffering handles multiple ESP8266 `+IPD` bursts. A complete
+  HTTP 200 response with valid Content-Length and bounded JSON is required.
+
+The status endpoint is `GET /v1/status` with an Authorization bearer device
+token. Its JSON has `version: 1`, UTC epoch `now`, and separate `codex`/`claude`
+objects containing `status`, `observed_at`, and two optional `windows`. Each
+window contains `used_pct`, `duration_mins`, `resets_at`. Null means unavailable.
+Responses stay below 2 KB and are not chunked. Fixtures are under `tests/fixtures/`.
+
+## Checks
+
+```powershell
+python -m unittest discover -s tests -v
+make -C Release all
+git diff --check
+```
+
+The native parser test also requires host GCC. It compiles the real MCU decoder,
+checks truncated/fragmented HTTP, expiration and the receive ring without board
+dependencies. The UART receive ring is single-producer (ISR), single-consumer
+(network task).
+
+Without a USB serial cable, `Usage_Debug` is an SWD-readable 16-word diagnostic
+array. Words are: magic `0x554b414e`, UI seconds, page, network state, successful
+polls, last fetch error, four quota values in tenths of a percent, validity mask,
+free FreeRTOS heap bytes, UI/network stack high-water marks in words, last bridge
+epoch, reserved. It contains no credentials or account identifiers. Runtime
+checks do not substitute for a photo or visual inspection of the actual LCD.

@@ -1,4 +1,5 @@
 #include "usart_compat_hal.h"
+#include "usage_data.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -17,6 +18,27 @@ static uint8_t uart2_rx_byte;
 static uint8_t uart6_rx_byte;
 static uint16_t usart6_index;
 static uint8_t usart6_pending_prefix;
+static volatile uint8_t uart2_stream_mode;
+static UsageRxBuffer uart2_stream;
+
+void USART2_StreamBegin(void)
+{
+    uint32_t irq=__get_PRIMASK();__disable_irq();
+    HAL_TIM_Base_Stop_IT(&htim7);
+    uart2_stream.head=0;uart2_stream.tail=0;uart2_stream.overflow=0;
+    USART2_RX_STA=0;uart2_stream_mode=1;
+    __set_PRIMASK(irq);
+}
+void USART2_StreamEnd(void)
+{
+    uint32_t irq=__get_PRIMASK();__disable_irq();
+    uart2_stream_mode=0;USART2_RX_STA=0;
+    __set_PRIMASK(irq);
+}
+int USART2_StreamRead(char *out,size_t capacity)
+{
+    return UsageRx_Read(&uart2_stream,out,capacity);
+}
 
 void uart_init(u32 bound)
 {
@@ -97,10 +119,11 @@ static void uart1_push(uint8_t b)
 
 static void uart2_push(uint8_t b)
 {
+    if(uart2_stream_mode) {UsageRx_Push(&uart2_stream,(char)b);return;}
     if ((USART2_RX_STA & 0x8000U) != 0U) {
         return;
     }
-    if ((USART2_RX_STA & 0x7FFFU) < USART2_MAX_RECV_LEN) {
+    if ((USART2_RX_STA & 0x7FFFU) < USART2_MAX_RECV_LEN - 1U) {
         USART2_RX_BUF[USART2_RX_STA & 0x7FFFU] = b;
         USART2_RX_STA++;
         __HAL_TIM_SET_COUNTER(&htim7, 0);

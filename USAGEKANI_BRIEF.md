@@ -1,8 +1,13 @@
 # Usagekani product brief
 
 Updated: 2026-11-21
-Status: exploration; user intent recorded, architecture and screen design proposed.
-This is a product brief, not an approved implementation specification.
+Status: PC-companion approach and the two-page Clawd preview approved on
+2026-11-21; first implementation is running on hardware. This brief preserves the original
+research. See [current setup and behavior](docs/USAGEKANI_SETUP.md) for the
+implementation contract and configuration instructions.
+
+See [bring-up evidence and remaining checks](docs/USAGEKANI_BRINGUP.md) for
+current validation; the findings below record the initial research stage.
 
 ## Purpose
 

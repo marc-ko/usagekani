@@ -49,6 +49,7 @@ cmake-build-*
 *.vscode
 *.DS_Store
 *.pyc
+__pycache__/
 
 # STM32CubeMX related files
 build/

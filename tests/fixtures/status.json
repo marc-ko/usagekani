@@ -1,0 +1,1 @@
+{"version":1,"now":2000000000,"codex":{"status":"ok","observed_at":1999999990,"windows":[{"used_pct":16,"duration_mins":300,"resets_at":2000004000},{"used_pct":26,"duration_mins":10080,"resets_at":2000400000}]},"claude":{"status":"waiting","observed_at":0,"windows":[null,null]}}

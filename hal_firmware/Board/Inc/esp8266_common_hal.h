@@ -2,6 +2,7 @@
 #define ESP8266_COMMON_HAL_H
 
 #include "rtc_hal_compat.h"
+#include "usage_data.h"
 
 typedef struct {
     u8 present_code;
@@ -77,5 +78,6 @@ UserInfoStruct ESP8266_GetUserInfo(char *username);
 OpenClawHealthStruct ESP8266_GetOpenClawHealth(void);
 OpenClawStatusStruct ESP8266_GetOpenClawStatus(void);
 OpenClawMessageStruct ESP8266_GetOpenClawMessage(void);
+u8 ESP8266_GetUsage(UsageSnapshot *snapshot);
 
 #endif

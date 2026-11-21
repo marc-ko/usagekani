@@ -18,7 +18,7 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim7;
 ADC_HandleTypeDef hadc1;
 
-void App_CreateTasks(void);
+void Usage_CreateTasks(void);
 
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
@@ -58,7 +58,7 @@ int main(void)
 
     USART_Compat_StartRx();
 
-    App_CreateTasks();
+    Usage_CreateTasks();
     vTaskStartScheduler();
 
     while (1) {
@@ -170,10 +170,11 @@ static void MX_SDIO_SD_Init(void)
     hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
     hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
     hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-    hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
+    hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
     hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
     hsd.Init.ClockDiv = 0;
-    (void)HAL_SD_Init(&hsd);
+    /* Usagekani does not use the unvalidated SD card. HAL_SD_Init can hang
+     * in SD_FindSCR on this board, preventing all display/network tasks. */
 }
 
 static void MX_RTC_Init(void)
