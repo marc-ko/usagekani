@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 from .claude import state_dir
+from .attention import read_attention
 from .claude_api import collect as collect_claude_api
 from .codex import QuotaError, read_limits
 from .model import Store, normalize_codex, validate_cached_provider
@@ -70,7 +71,12 @@ def main():
                 load_claude_cache(directory / 'claude.json', store, int(time.time()))
                 stop.wait(2)
 
-    for collect in (codex_loop, claude_loop):
+    def attention_loop():
+        while not stop.is_set():
+            store.set_attention(read_attention(directory / 'attention.json', int(time.time())))
+            stop.wait(0.25)
+
+    for collect in (codex_loop, claude_loop, attention_loop):
         threading.Thread(target=collect, daemon=True).start()
     server = bind_server(config, store, stop)
     if server is None:

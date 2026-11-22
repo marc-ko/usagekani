@@ -73,6 +73,11 @@ class Store:
         self._lock = threading.Lock()
         self._values = {p: _provider([None, None], 0) for p in ('codex', 'claude')}
         self._failures = {}
+        self._attention = {'codex': None, 'claude': None}
+
+    def set_attention(self, attention):
+        with self._lock:
+            self._attention = copy.deepcopy(attention)
 
     def update(self, provider, value):
         with self._lock:
@@ -104,6 +109,8 @@ class Store:
     def snapshot(self, now):
         with self._lock:
             result = copy.deepcopy(self._values)
+            for name, provider in result.items():
+                provider['attention'] = copy.deepcopy(self._attention.get(name))
         for provider in result.values():
             if provider['status'] == 'ok' and now - provider['observed_at'] > 300:
                 provider['status'] = 'stale'
