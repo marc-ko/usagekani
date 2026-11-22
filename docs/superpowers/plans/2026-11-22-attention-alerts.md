@@ -1,6 +1,6 @@
 # Input-needed Alerts Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show the approved provider-specific input-needed takeover screen for
 explicit pending questions/approvals and clear it when the request is resolved.
@@ -38,10 +38,10 @@ Files: `companion/usagekani/attention.py`, `process_identity.py`,
 Interface: `apply_event(path, provider, session, request, action, kind, owner,
 event_ms)`; `read_attention(path, now, alive=...) -> provider attention map`.
 
-- [ ] Write lifecycle/concurrency/restart/malformed/PID tests; observe failures.
-- [ ] Implement atomic locked state, request tombstones and owner validation.
-- [ ] Feed snapshots with independent optional attention and run full suite.
-- [ ] Commit state/feed implementation and record verification in ledger.
+- [x] Write lifecycle/concurrency/restart/malformed/PID tests; observe failures.
+- [x] Implement atomic locked state, request tombstones and owner validation.
+- [x] Feed snapshots with independent optional attention and run full suite.
+- [x] Commit state/feed implementation and record verification in ledger.
 
 ### Task 2: Actual event sources and preserved hook installation
 
@@ -50,11 +50,11 @@ wrapper `companion/attention_hook.py`, tests and setup docs.
 Interface: observer hooks call Task 1; Codex watcher reads structured records
 and checkpoints offsets after state writes, without generating model turns.
 
-- [ ] Write hook and real-format Codex record tests, including partial lines,
+- [x] Write hook and real-format Codex record tests, including partial lines,
   async accepted/reply, multiple questions and rewind/replay; observe failures.
-- [ ] Implement sources, bounded disk reading, discovery and settings merge.
-- [ ] Test installer idempotence and preservation of unrelated hooks/settings.
-- [ ] Run full suite, commit, and update ledger.
+- [x] Implement sources, bounded disk reading, discovery and settings merge.
+- [x] Test installer idempotence and preservation of unrelated hooks/settings.
+- [x] Run full suite, commit, and update ledger.
 
 ### Task 3: HAL parser and approved takeover UI
 
@@ -62,16 +62,20 @@ Files: `usage_data.h/.c`, `usage_dashboard.c`, native tests.
 Interface: per-provider `UsageAttention` has kind/count/observed_at; selection
 policy validates feed recency and rotates pending providers only.
 
-- [ ] Add optional-field, invalid/count/future/stale and selection tests; RED.
-- [ ] Implement bounded parser and takeover view using existing mascot roots.
-- [ ] Preserve normal transitions and show request kind/count/PC destination.
-- [ ] Run full suite and HAL build, commit, update ledger.
+- [x] Add optional-field, invalid/count/future/stale and selection tests; RED.
+- [x] Implement bounded parser and takeover view using existing mascot roots.
+- [x] Preserve normal transitions and show request kind/count/PC destination.
+- [x] Run full suite and HAL build, commit, update ledger.
 
 ### Task 4: Install, flash and end-to-end verification
 
-- [ ] Merge reviewed local hook configuration with backups; restart companion.
-- [ ] Back up and flash/verify the target; check live usage remains independent.
-- [ ] Verify actual Codex question appears and its structured reply clears it.
-- [ ] Exercise native hook entry points and report Claude live-test limits.
-- [ ] Fresh whole-branch review; fix material findings with RED/GREEN tests.
-- [ ] Update setup/bring-up documentation and existing draft PR, push commits.
+- [x] Merge reviewed local hook configuration with backups; restart companion.
+- [x] Back up and flash/verify the target; check live usage remains independent.
+- [x] Verify actual Codex question appears and its structured reply clears it.
+- [x] Exercise native hook entry points and report Claude live-test limits.
+- [x] Fresh whole-branch review; fix material findings with RED/GREEN tests.
+- [x] Update setup/bring-up documentation and existing draft PR, push commits.
+
+## API-source clarification
+
+- [ ] Identify the user's Claude conversation app/agent and connect its activity events. The user clarified the external API is their Claude source; its quota response has no waiting-for-input state. Local Claude Code hooks are implemented, but are not claimed as detection of that API's conversations.

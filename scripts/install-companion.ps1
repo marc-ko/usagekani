@@ -7,6 +7,8 @@ try {
     if ($HostAddress) { & $usagekaniPython -m companion.usagekani.install --host $HostAddress }
     else { & $usagekaniPython -m companion.usagekani.install }
     if ($LASTEXITCODE -ne 0) { throw 'Companion installation failed.' }
+    & $usagekaniPython -m companion.usagekani.attention_install
+    if ($LASTEXITCODE -ne 0) { throw 'Observer hook installation failed.' }
     $usagekaniState = Join-Path $env:LOCALAPPDATA 'Usagekani'
     $usagekaniPythonw = Join-Path (Split-Path -Parent $usagekaniPython) 'pythonw.exe'
     if (-not (Test-Path -LiteralPath $usagekaniPythonw)) { throw 'pythonw.exe is required for background startup.' }

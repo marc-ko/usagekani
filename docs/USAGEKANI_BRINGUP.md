@@ -257,3 +257,43 @@ no USB UART port was available for serial capture. A USB port-reset failure
 (Code 43) was also present, but its association with the cube was not established.
 ST-LINK remained operational. Further upstream repair requires the API backend
 source/deployment; the available GitHub repository search found only Usagekani.
+
+## Input-needed takeover — 2026-11-22
+
+The user approved the `I need you.` / `Your approval?` preview with the white
+Codex terminal badge and original orange Clawd. Implemented a bounded local
+request tracker, observer hooks, Codex Desktop question/reply record adapter,
+optional version-1 attention fields, and the HAL takeover view. It reuses the
+existing mascot roots rather than allocating new mascots. Normal provider
+slides remain unchanged; the alert appears immediately to avoid expensive
+full-panel SPI animation. Local feed polling is two seconds; external quota
+collection remains Claude 30s / Codex 60s.
+
+Independent whole-feature review found seven material lifecycle/configuration
+groups. Fixes were reproduced with regressions, including delayed/replayed
+starts, answer-before-ask, lost/corrupt checkpoints, missing rollout leases,
+process-generation/provenance checks, identical concurrent permission calls,
+large tool results, scoped lifecycle cleanup and composite user hook retention.
+All 56 tests pass. HAL built without warnings/errors. Firmware was backed up,
+flashed and verified through ST-LINK. The existing original checkout edits remain
+untouched.
+
+Synthetic Claude question and approval events reached the cube. SWD showed
+provider 2, kind 1/2, count 1 and happy face byte 0 even while the separate Claude
+quota collector was failing. This verifies attention/quota independence and
+device view selection, not a live Claude conversation. LVGL free heap was
+23,652 bytes in the first takeover check; FreeRTOS free heap stayed 7,024 bytes.
+
+A real `request_user_input_async` from this chat reached the PC feed and cube as
+Codex provider 1 / question / count 1. The user confirmed seeing the white
+mascot, `I need you.` and `Reply in Codex`. Their structured replies cleared the
+pending requests; the PC feed returned null attention, the cube's active/kind/
+count/mask debug words returned to zero, exit count advanced, and normal page
+rotation continued. A later clarification question correctly raises a new alert.
+
+Local Claude Code's live smoke test stopped before its question because it is
+signed out (`loggedIn: false`). The user clarified that their Claude source is
+the external API. That API currently reports usage only, so conversation waiting
+state cannot be inferred from it. Claude Code observer hooks are ready locally,
+but wiring the user's API conversation source requires its app/agent activity
+events. No live Claude conversation detection is claimed for the quota API.

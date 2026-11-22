@@ -143,7 +143,8 @@ board in `SD_FindSCR`.
   glides and changes provider accent color.
 - Two bars show percentage used and reset countdowns. Window labels follow the
   provider's actual duration; unavailable values show `--`.
-- Codex is sampled every 60 seconds; the cube polls every 30 seconds.
+- Codex is sampled every 60 seconds; the cube polls the local feed every two
+  seconds for activity alerts. External Claude API sampling stays at 30 seconds.
 - Reports older than five minutes are marked stale. Failed collection preserves
   last-known values. A failed Claude cache cannot invalidate Codex.
 - Expired windows are dimmed and show `Refreshing`; they do not trigger active
@@ -174,6 +175,70 @@ companion encodes this as `used_pct: 0, resets_at: 0`. The cube shows **0% / No
 active window**. This sentinel is only valid for zero usage; no reset time is
 invented and the weekly window remains independently available.
 Responses stay below 2 KB and are not chunked. Fixtures are under `tests/fixtures/`.
+
+## Input-needed screens
+
+Explicit questions replace the usage page with **I need you.**, the matching
+provider mascot, a request count, and **Reply in Codex/Claude**. Permission
+requests use **Your approval?**. Answer on the PC. The cube never answers a
+question or approves a tool. Usage rotation pauses during attention; if both
+providers have requests, their alerts alternate every four seconds. Normal
+usage resumes when requests clear. The original five Clawd faces are retained;
+the input screen uses happy Clawd with a question/approval bubble.
+
+The companion reads local activity every 250 ms and the cube polls the local
+feed every two seconds, plus transport/display time. External quota polling is
+unchanged. Activity is independent of quota errors. A stale/disconnected local
+activity feed cannot hold a supposedly current attention screen indefinitely.
+
+**Codex Desktop:** the installed desktop version's structured question/reply
+records are observed read-only. The adapter checks desktop thread provenance,
+owning process creation time, readable source leases and request IDs. It handles
+asynchronous accepted notifications separately from actual answers. It ignores
+pre-install historical prompts and unrelated Codex terminal/automatic-review
+threads. This adapter is version-sensitive; it was verified with desktop engine
+`0.171.0-alpha.13`. It does not create model turns or change the existing Codex
+`notify` handler.
+
+**Claude Code on this PC:** `install-companion.ps1` merges observer-only hooks
+into Claude settings, backing up to
+`%LOCALAPPDATA%/Usagekani/claude-settings-before-attention.json`. Existing hooks,
+status line and settings remain intact. Restart an existing Claude session to
+load changes. Question/tool IDs correlate starts and results. Permission
+requests are paired with live tool invocations; their alert clears when the
+approved tool completes, because the hook interface has no general immediate
+approval-result event. Anonymous MCP forms are counted by session/server/mode;
+without unique IDs, duplicate anonymous callbacks cannot be distinguished.
+`idle_prompt` and ordinary completed work never create an alert.
+
+The HTTPS **Claude usage API supplies quotas only**. Its current `/usage`
+response has no conversation/input state. API-backed conversation alerts need
+an activity signal from the app/agent running that conversation, including
+request start/resolution identifiers. A successful health check or a usage
+percentage cannot provide that signal. Local Claude Code hooks are a separate
+optional source; they do not add conversation status to the external API.
+
+Current local Codex approval review is automatic, so it does not need a human
+alert or additional Codex hooks. For manually reviewed local Codex sessions,
+optional observer hooks can be installed with:
+
+```powershell
+python -m companion.usagekani.attention_install --codex-manual
+```
+
+Review/trust those new hooks through Codex `/hooks` before use. No hook-trust
+bypass is configured. Their lifecycle cleanup affects approvals only, preserving
+unanswered desktop questions. Desktop questions work without these extra hooks.
+
+Local `attention.json` stores hashed identifiers, kinds and process identities,
+not prompt/command text. A bounded checkpoint stores hashed source/call IDs and
+offsets. Pending identified requests survive companion restart while their
+original owner and source remain valid; exited/reused processes are filtered.
+
+The version-1 device feed optionally adds per-provider `attention`:
+`{"kind":"question","count":1,"observed_at":<UTC epoch>}` (or `approval`).
+Null/absent means no attention. Counts are bounded to 64; the MCU validates
+types, time bounds and feed recency before entering the takeover view.
 
 ## Checks
 
