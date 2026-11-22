@@ -1,6 +1,8 @@
 """Normalize provider quotas without confusing missing data with zero usage."""
 import copy
+import logging
 import math
+import re
 import threading
 
 
@@ -70,6 +72,7 @@ class Store:
     def __init__(self):
         self._lock = threading.Lock()
         self._values = {p: _provider([None, None], 0) for p in ('codex', 'claude')}
+        self._failures = {}
 
     def update(self, provider, value):
         with self._lock:
@@ -80,10 +83,23 @@ class Store:
                 # while newer known quota values and their age remain intact.
                 self._values[provider]['status'] = (
                     'ok' if any(w is not None for w in self._values[provider]['windows']) else 'waiting')
+            if self._values[provider]['status'] in ('ok', 'waiting') and provider in self._failures:
+                logging.info('%s collection recovered', provider)
+                del self._failures[provider]
 
-    def fail(self, provider, status='error'):
+    def fail(self, provider, status='error', reason='collection_failed'):
         with self._lock:
             self._values[provider]['status'] = status
+            # Only bounded codes can reach logs. Never log exception strings,
+            # URLs, curl stderr or upstream response bodies.
+            if not isinstance(reason, str) or not re.fullmatch(
+                    r'http_[1-5][0-9]{2}|curl_[0-9]{1,3}|timeout|configuration|'
+                    r'invalid_response|invalid_json|transport_error|collection_failed', reason):
+                reason = 'collection_failed'
+            failure = (status, reason)
+            if self._failures.get(provider) != failure:
+                logging.warning('%s collection failed (%s, %s)', provider, status, reason)
+                self._failures[provider] = failure
 
     def snapshot(self, now):
         with self._lock:

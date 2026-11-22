@@ -50,6 +50,10 @@ python -m companion.usagekani
 Run one companion instance. Logs are at
 `%LOCALAPPDATA%/Usagekani/companion.log`; no provider tokens or private hosts are
 logged. Stop the existing background companion before starting a foreground one.
+Collection failures record only the provider, status and a bounded reason code
+(for example `http_502`, `curl_6`, `timeout` or `invalid_response`). Identical
+repeated failures stay quiet; changed causes and recovery are logged. Neither
+upstream response bodies nor exception strings, keys or URLs are logged.
 
 ## Claude readings
 

@@ -215,3 +215,23 @@ Initial SWD diagnostics showed page rotation, online polling, all four quota
 windows valid and no fetch errors. LVGL free heap was 24,784 bytes and FreeRTOS
 free heap was 7,024 bytes. These verify execution, not physical LCD appearance;
 the on-device look and motion still require the user's observation.
+
+## Follow-up: investigate intermittent Claude unavailability — 2026-11-22
+
+The user reported Claude unavailable again. On inspection the API health and
+authenticated usage requests both returned HTTP 200. Its 0%/null-reset current
+window and 16% weekly window normalized successfully. The PC feed marked both
+providers OK; SWD showed online polling, no fetch error, all four windows valid
+and the same Claude readings. The outage had recovered before inspection.
+
+The existing log contained only startup messages, so the earlier failure's cause
+could not be established. The companion now records bounded failure codes for
+HTTP status, curl failures, timeout, invalid JSON and invalid schema. Repeated
+identical failures are suppressed and recovery is logged once. Upstream text,
+exception strings, URLs and credentials are excluded. Poll/backoff cadence,
+last-known values, freshness rules and device firmware are unchanged.
+
+Three diagnostic regression tests were observed failing before implementation.
+All 28 companion/native tests now pass, including secret exclusion and duplicate
+failure/recovery handling. This improves evidence for the next interruption;
+it does not establish or claim to fix the previous upstream failure.

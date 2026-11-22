@@ -14,6 +14,53 @@ SAMPLE = {'plan': 'pro', 'fetched_at': '2033-05-18T03:33:20Z',
 
 
 class ClaudeAPITests(unittest.TestCase):
+    def test_failure_diagnostic_keeps_http_cause_but_never_server_text_or_credentials(self):
+        config = {'claude_usage_url': 'https://private.invalid/usage', 'claude_usage_key': 'private-test-key'}
+        response = subprocess.CompletedProcess([], 0,
+            '{"error":"private-test-key https://private.invalid/usage"}\n502', '')
+        store = Store()
+        with self.assertLogs(level='WARNING') as logs:
+            with patch('companion.usagekani.claude_api.subprocess.run', return_value=response):
+                self.assertFalse(collect(config, store, 2000000000))
+        message = '\n'.join(logs.output)
+        self.assertIn('claude', message)
+        self.assertIn('http_502', message)
+        self.assertNotIn('private-test-key', message)
+        self.assertNotIn('private.invalid', message)
+        self.assertEqual(store.snapshot(2000000000)['claude']['status'], 'error')
+
+    def test_transport_diagnostics_distinguish_timeout_dns_and_bad_json(self):
+        config = {'claude_usage_url': 'https://private.invalid/usage', 'claude_usage_key': 'private-test-key'}
+        cases = [
+            (subprocess.TimeoutExpired(['private-test-key'], 20), 'timeout'),
+            (subprocess.CompletedProcess([], 6, '\n000', 'private-test-key'), 'curl_6'),
+            (subprocess.CompletedProcess([], 0, 'private-test-key\n200', ''), 'invalid_json'),
+            (subprocess.CompletedProcess([], 0, json.dumps(dict(SAMPLE, fetched_at=None))+'\n200', ''), 'invalid_response'),
+        ]
+        for result, cause in cases:
+            with self.subTest(cause=cause), self.assertLogs(level='WARNING') as logs:
+                options = {'side_effect': result} if isinstance(result, Exception) else {'return_value': result}
+                with patch('companion.usagekani.claude_api.subprocess.run', **options):
+                    self.assertFalse(collect(config, Store(), 2000000000))
+                message = '\n'.join(logs.output)
+                self.assertIn(cause, message)
+                self.assertNotIn('private-test-key', message)
+                self.assertNotIn('private.invalid', message)
+
+    def test_repeated_same_failure_is_quiet_and_recovery_is_logged_once(self):
+        config = {'claude_usage_url': 'https://example.invalid/usage', 'claude_usage_key': 'test-key'}
+        failure = subprocess.CompletedProcess([], 0, '{"error":"upstream"}\n500', '')
+        success = subprocess.CompletedProcess([], 0, json.dumps(SAMPLE)+'\n200', '')
+        store = Store()
+        with self.assertLogs(level='INFO') as logs:
+            with patch('companion.usagekani.claude_api.subprocess.run', side_effect=[failure, failure, success, success]):
+                for expected in (False, False, True, True):
+                    self.assertEqual(collect(config, store, 2000000000), expected)
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn('http_500', logs.output[0])
+        self.assertIn('recovered', logs.output[1])
+        self.assertEqual(store.snapshot(2000000000)['claude']['status'], 'ok')
+
     def test_zero_usage_without_reset_is_idle_not_provider_failure(self):
         payload = dict(SAMPLE, five_hour={'utilization': 0, 'resets_at': None})
         value = normalize(payload, 2000000000)
