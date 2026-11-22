@@ -5,7 +5,6 @@ from pathlib import Path
 import shlex
 import shutil
 import sys
-import tomllib
 
 from .claude import state_dir
 
@@ -14,12 +13,12 @@ def install_hooks(root, directory, claude_settings, codex_hooks, python, *, code
     directory.mkdir(parents=True, exist_ok=True)
     script = (root/'companion/attention_hook.py').as_posix()
     for provider, path, events in [
-        ('claude', claude_settings, {'PreToolUse':'AskUserQuestion|ExitPlanMode',
+        ('claude', claude_settings, {'PreToolUse':'.*',
             'PermissionRequest':'.*', 'PostToolUse':'.*', 'PostToolUseFailure':'.*',
             'UserPromptSubmit':None, 'Stop':None, 'StopFailure':None, 'SessionEnd':None,
             'Elicitation':None, 'ElicitationResult':None}),
         ('codex', codex_hooks, {'PermissionRequest':'.*', 'PostToolUse':'.*',
-            'UserPromptSubmit':None, 'Interrupt':None, 'SessionEnd':None})]:
+            'PreToolUse':'.*','UserPromptSubmit':None, 'Interrupt':None, 'SessionEnd':None,'Stop':None})]:
         if provider == 'codex' and not codex_manual:
             continue
         data = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {}
@@ -38,8 +37,8 @@ def install_hooks(root, directory, claude_settings, codex_hooks, python, *, code
             for group in groups:
                 if isinstance(group, dict) and isinstance(group.get('hooks'), list):
                     group['hooks'] = [hook for hook in group['hooks'] if not
-                        (isinstance(hook, dict) and script in str(hook.get('command', ''))
-                         and '--provider '+provider in str(hook.get('command', '')))]
+                        (isinstance(hook, dict) and hook.get('command')==command
+                         and hook.get('type')=='command' and set(hook)<= {'type','command','timeout'})]
             groups[:] = [group for group in groups if not isinstance(group,dict) or group.get('hooks')]
             group = {'hooks':[{'type':'command', 'command':command, 'timeout':3}]}
             if matcher is not None:

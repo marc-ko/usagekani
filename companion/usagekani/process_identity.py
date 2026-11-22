@@ -94,7 +94,23 @@ def session_owner(provider):
 
 def desktop_owner():
     table = processes()
+    candidates=[]
     for pid, (parent, name) in table.items():
         if name.lower() == 'codex.exe' and table.get(parent, (0, ''))[1].lower() == 'chatgpt.exe':
-            return process_identity(pid)
+            grandparent=table.get(parent,(0,''))[0]
+            candidates.append((table.get(grandparent,(0,''))[1].lower()=='chatgpt.exe',pid))
+    for _,pid in sorted(candidates):
+        identity=process_identity(pid)
+        if identity:
+            return identity
     return None
+
+
+def process_started_ms(owner):
+    if os.name == 'nt':
+        return max(0,(owner['started']-116444736000000000)//10000)
+    try:
+        boot=next(int(line.split()[1]) for line in Path('/proc/stat').read_text().splitlines() if line.startswith('btime '))
+        return int((boot+owner['started']/os.sysconf('SC_CLK_TCK'))*1000)
+    except (OSError,ValueError,StopIteration):
+        return 0

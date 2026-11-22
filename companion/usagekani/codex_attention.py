@@ -7,8 +7,8 @@ import re
 import sqlite3
 import time
 
-from .attention import apply_event
-from .process_identity import desktop_owner
+from .attention import apply_event, refresh_sources, has_pending, pending_questions
+from .process_identity import desktop_owner, process_started_ms
 
 
 def _key(text):
@@ -17,15 +17,17 @@ def _key(text):
 
 class CodexWatcher:
     def __init__(self, home, state_path, checkpoint_path, *, sources=None,
-                 owner=desktop_owner, start_at_end=True):
+                 owner=desktop_owner, start_at_end=True, clock=time.time, generation_start=process_started_ms):
         self.home = Path(home); self.state_path = Path(state_path)
         self.checkpoint_path = Path(checkpoint_path); self.sources = sources
         self.owner = owner; self.first = True; self.start_at_end = start_at_end
+        self.clock=clock;self.generation_start=generation_start;self.loaded_checkpoint=False
+        self.recovering=has_pending(self.state_path,'codex')
         self.cursor = {}; self.calls = {}; self.cached_sources = []
         self.next_discovery = 0
-        self.since = time.time_ns()//1000000 if start_at_end else 0
+        self.since = int(clock()*1000) if start_at_end else 0
         try:
-            raw = self.checkpoint_path.read_bytes()
+            with self.checkpoint_path.open('rb') as source:raw=source.read(65537)
             if len(raw) <= 65536:
                 saved = json.loads(raw)
                 if isinstance(saved, dict) and saved.get('version') == 1:
@@ -38,7 +40,8 @@ class CodexWatcher:
                         and 1 <= len(v) <= 12 and all(type(i) is int and 0 <= i < 12 for i in v)}
                     if type(saved.get('since')) is int and saved['since'] >= 0:
                         self.since = saved['since']
-        except (OSError, ValueError, TypeError, AttributeError):
+                    self.loaded_checkpoint=True
+        except (OSError, ValueError, TypeError, AttributeError, RecursionError):
             pass
         self.cursor = dict(list(self.cursor.items())[-128:])
         self.calls = dict(list(self.calls.items())[-128:])
@@ -52,20 +55,20 @@ class CodexWatcher:
         try:
             db = sqlite3.connect((self.home/'state_5.sqlite').as_uri()+'?mode=ro', uri=True, timeout=0.2)
             try:
-                rows = db.execute('SELECT id, rollout_path, archived FROM threads ORDER BY updated_at DESC LIMIT 128').fetchall()
+                rows = db.execute("SELECT id, rollout_path, archived FROM threads WHERE originator='Codex Desktop' AND thread_source='user' ORDER BY updated_at DESC LIMIT 128").fetchall()
             finally:
                 db.close()
             sources = []
             for session, filename, archived in rows:
                 if archived:
                     if _key(session) in self.cursor:
-                        apply_event(self.state_path, 'codex', session, 'session', action='clear_session')
+                        apply_event(self.state_path, 'codex', session, 'session', action='clear_session',event_ms=int(self.clock()*1000))
                     continue
                 path = Path(filename).resolve()
                 if path.is_relative_to((self.home/'sessions').resolve()) and len(sources) < 64:
                     sources.append((session, path))
             self.cached_sources = sources
-        except (OSError, ValueError, sqlite3.Error):
+        except (OSError, ValueError, TypeError, sqlite3.Error):
             pass
         return self.cached_sources
 
@@ -75,14 +78,14 @@ class CodexWatcher:
             if stamp.tzinfo is None:
                 return
             event_ms = int(stamp.timestamp()*1000)
-            if event_ms < self.since:
-                return
             payload = record.get('payload', {})
             if not isinstance(payload, dict) or record.get('type') != 'response_item':
                 return
             kind = payload.get('type'); name = payload.get('name', '').split('.')[-1]
             call = payload.get('call_id')
             if kind == 'function_call' and name in ('request_user_input', 'request_user_input_async') and isinstance(call, str):
+                if event_ms < max(self.since,self.generation_start(owner)):
+                    return
                 arguments = payload.get('arguments', {})
                 if isinstance(arguments, str):
                     arguments = json.loads(arguments)
@@ -91,9 +94,9 @@ class CodexWatcher:
                     return
                 self.calls[_key(session+'/'+call)] = list(range(len(questions)))
                 for i in range(len(questions)):
-                    apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', owner=owner, event_ms=event_ms)
+                    apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', owner=owner,event_ms=event_ms,source='codex_record')
             elif kind == 'function_call_output' and isinstance(call, str):
-                pending = self.calls.get(_key(session+'/'+call))
+                pending = self.calls.get(_key(session+'/'+call)) or pending_questions(self.state_path,'codex',session,call)
                 if pending:
                     try:
                         output = json.loads(payload.get('output', '{}'))
@@ -102,8 +105,8 @@ class CodexWatcher:
                     if isinstance(output, dict) and output.get('accepted') is True:
                         return
                     for i in pending:
-                        apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', action='clear', event_ms=event_ms)
-                    del self.calls[_key(session+'/'+call)]
+                        apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', action='clear', event_ms=event_ms,terminal=True)
+                    self.calls.pop(_key(session+'/'+call),None)
             elif kind == 'message' and payload.get('role') == 'user':
                 for part in payload.get('content', []):
                     if not isinstance(part, dict) or not isinstance(part.get('text'), str):
@@ -121,9 +124,9 @@ class CodexWatcher:
                                 or type(identity[2]) is not int):
                             continue
                         call, i = identity[1:]; call_key = _key(session+'/'+call)
+                        apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', action='clear', event_ms=event_ms,terminal=True)
                         pending = self.calls.get(call_key, [])
                         if i in pending:
-                            apply_event(self.state_path, 'codex', session, f'question:{call}:{i}', action='clear', event_ms=event_ms)
                             pending.remove(i)
                             if not pending:
                                 self.calls.pop(call_key, None)
@@ -135,12 +138,15 @@ class CodexWatcher:
         if owner is None:
             return
         changed = False
+        readable=[]
         for session, filename in self._sources():
             key = _key(session); path = Path(filename)
             try:
                 size = path.stat().st_size
                 if key not in self.cursor:
-                    self.cursor[key] = {'offset': size if self.first and self.start_at_end else 0, 'discard': False}
+                    bootstrap=self.first and self.start_at_end and not self.loaded_checkpoint
+                    offset=max(0,size-1048576) if bootstrap and self.recovering else (size if bootstrap else 0)
+                    self.cursor[key] = {'offset':offset,'discard':bool(bootstrap and self.recovering and offset>0)}
                     changed = True
                 cursor = self.cursor[key]
                 if cursor['offset'] > size:
@@ -161,8 +167,10 @@ class CodexWatcher:
                                 pass
                         cursor.update(offset=source.tell(), discard=not complete)
                         changed = True
+                readable.append(session)
             except OSError:
                 continue
+        refresh_sources(self.state_path,readable,owner,int(self.clock()*1000))
         self.first = False
         if changed:
             self.cursor = dict(list(self.cursor.items())[-128:])
