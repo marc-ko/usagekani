@@ -33,6 +33,41 @@ static uint8_t parse_uint_after(const char *base, const char *key, uint8_t *out)
 static uint8_t parse_percent_after(const char *base, const char *section, uint8_t *out);
 static void parse_string_after(const char *base, const char *key, char *out, size_t out_len);
 
+u8 ESP8266_GetUsage(UsageSnapshot *snapshot)
+{
+    /* Static buffers keep the network task's stack bounded. One caller only. */
+    static char raw[4096], body[2049];
+    char request[512], command[64];
+    size_t used=0;
+    if(!USAGEKANI_HTTP_HOST[0] || !USAGEKANI_DEVICE_TOKEN[0]) return 4U;
+    esp8266_send_cmd((u8 *)"AT+CIPMODE=0", (u8 *)"OK", 100);
+    esp8266_send_cmd((u8 *)"AT+CIPMUX=0", (u8 *)"OK", 100);
+    esp8266_close_socket(100);
+    if(esp8266_start_tcp(USAGEKANI_HTTP_HOST,USAGEKANI_HTTP_PORT)) return 3U;
+    int count=snprintf(request,sizeof(request),
+        "GET /v1/status HTTP/1.0\r\nHost: %s\r\nAuthorization: Bearer %s\r\nConnection: close\r\n\r\n",
+        USAGEKANI_HTTP_HOST,USAGEKANI_DEVICE_TOKEN);
+    if(count<=0 || count>=(int)sizeof(request))return 1U;
+    snprintf(command,sizeof(command),"AT+CIPSEND=%u",(unsigned)count);
+    if(esp8266_send_cmd((u8 *)command,(u8 *)">",300))return 1U;
+    USART2_StreamBegin();
+    esp8266_send_data((u8 *)request,NULL,0);
+    raw[0]=0;
+    for(unsigned wait=0;wait<800;wait++) {
+        HAL_Delay(10);
+        int size=USART2_StreamRead(raw+used,sizeof(raw)-1-used);
+        if(size<0 || used>=sizeof(raw)-1){USART2_StreamEnd();return 1U;}
+        if(size>0) {
+            used+=(size_t)size;raw[used]=0;
+            if(Usage_ExtractHttp(raw,used,body,sizeof(body))==0) {
+                USART2_StreamEnd();
+                return Usage_Parse(body,strlen(body),snapshot)==0 ? 0U : 1U;
+            }
+        }
+    }
+    USART2_StreamEnd();return 1U;
+}
+
 void esp8266_at_response(u8 mode)
 {
     if (USART2_RX_STA & 0x8000U) {

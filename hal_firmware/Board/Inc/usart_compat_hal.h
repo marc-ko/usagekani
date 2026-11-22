@@ -31,5 +31,8 @@ void u6_printf(char *fmt, ...);
 void USART_Compat_StartRx(void);
 void USART_Compat_OnRx(UART_HandleTypeDef *huart);
 void USART2_MarkFrameDone(void);
+void USART2_StreamBegin(void);
+void USART2_StreamEnd(void);
+int USART2_StreamRead(char *out, size_t capacity);
 
 #endif

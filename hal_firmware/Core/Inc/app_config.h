@@ -1,8 +1,8 @@
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 
-#define APP_FW_NAME "ClawPetCube HAL"
-#define APP_FW_VERSION "0.1.0-hal-migration"
+#define APP_FW_NAME "Usagekani HAL"
+#define APP_FW_VERSION "0.2.0-usage-monitor"
 
 #define APP_UART_BAUDRATE 115200U
 #define APP_LCD_WIDTH 240U
@@ -47,6 +47,16 @@
 
 #ifndef VPC_OPENCLAW_TOKEN
 #define VPC_OPENCLAW_TOKEN ""
+#endif
+
+#ifndef USAGEKANI_HTTP_HOST
+#define USAGEKANI_HTTP_HOST ""
+#endif
+#ifndef USAGEKANI_HTTP_PORT
+#define USAGEKANI_HTTP_PORT "8765"
+#endif
+#ifndef USAGEKANI_DEVICE_TOKEN
+#define USAGEKANI_DEVICE_TOKEN ""
 #endif
 
 #endif

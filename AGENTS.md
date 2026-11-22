@@ -10,7 +10,11 @@ removed after migration.
   shims, vendored STM32 HAL/CMSIS, FreeRTOS, and FatFs sources.
 - `Middlewares/LVGL/`: legacy LVGL 8.1.1 and GUI Guider sources still referenced
   by the HAL dashboard build.
-- `CLAWPETCUBE_PLAN.md`: source-of-truth product and technical plan.
+- `docs/USAGEKANI_SETUP.md`: current Usagekani setup, behavior and data contract.
+- `USAGEKANI_BRIEF.md`: product intent and original design research.
+- `companion/`: Python standard-library PC collectors and authenticated LAN feed.
+- `tests/`: companion behavior and native MCU parser/transport tests.
+- `CLAWPETCUBE_PLAN.md`: inherited OpenClaw plan and hardware history.
 - `hal_firmware/OPENCLAW_BRINGUP_JOURNAL.md`: OpenClaw/ESP8266 bring-up notes.
 - `hal_firmware/LVGL_BRINGUP_JOURNAL.md`: LCD/LVGL bring-up notes.
 - `hal_firmware/MIGRATION_STATUS.md`: HAL migration status by subsystem.
@@ -49,7 +53,8 @@ under `hal_firmware/Core/`.
 
 ## Testing Guidelines
 
-There is no active automated firmware test suite. Verify firmware changes by
+Run `python -m unittest discover -s tests -v` for companion and native parser
+checks (host GCC required). Verify complete firmware changes by
 compiling with `make -C Release all` and, when hardware is available,
 flashing/running on the target board. For UI/display changes, include LCD
 photos or serial evidence where possible.
