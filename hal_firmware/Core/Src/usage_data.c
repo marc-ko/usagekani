@@ -10,6 +10,19 @@ int Usage_WindowActive(const UsageWindow *window, uint32_t now)
 {
     return window->valid && window->resets_at>now;
 }
+UsageFace Usage_GetFace(const UsageProvider *provider,uint32_t now,int network_ok,int connecting)
+{
+    if(!network_ok)return connecting?FACE_SLEEPY:FACE_XX;
+    if(provider->status==USAGE_AUTH || provider->status==USAGE_ERROR)return FACE_XX;
+    if(provider->status==USAGE_WAITING || provider->status==USAGE_STALE ||
+       !provider->observed_at || (now>provider->observed_at && now-provider->observed_at>300U))return FACE_SLEEPY;
+    uint16_t worst=0;
+    for(unsigned k=0;k<2;k++)
+        if(Usage_WindowActive(&provider->windows[k],now) && provider->windows[k].used_tenths>worst)
+            worst=provider->windows[k].used_tenths;
+    if(worst>=1000)return FACE_SLEEPY;
+    return worst>=800?FACE_CONCERNED:FACE_HAPPY;
+}
 void UsageRx_Push(UsageRxBuffer *ring, char byte)
 {
     uint16_t next=(uint16_t)((ring->head+1U)&4095U);
@@ -169,6 +182,7 @@ static int provider(const Json *j,int i,UsageProvider *out)
                integer(j,field(j,w,"resets_at"),&out->windows[k].resets_at)) return -1;
             out->windows[k].valid=1;
             out->windows[k].used_tenths=(uint16_t)(used*10+0.5);
+            if(!out->windows[k].resets_at && used!=0.0)return -1;
         }
         w=j->t[w].next;
     }

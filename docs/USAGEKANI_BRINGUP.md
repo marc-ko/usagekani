@@ -156,3 +156,39 @@ over a much shorter travel distance. The normal idle UI delay remains unchanged.
 Counts exclude the two setup callbacks and are not a direct LCD frame-rate
 measurement. Live polling remained online with all four windows valid. The
 subjective feel still requires looking at the physical screen.
+
+## Follow-up: correct idle Claude data, faces and slide lifecycle — 2026-11-22
+
+The user observed `Provider unavailable` alongside an old 5% Claude reading,
+a concerned face at low usage, and a transition that snapped instead of sliding.
+Direct inspection found the exporter healthy (HTTP 200): five-hour utilization
+was 0 with `resets_at: null`, while weekly usage was 16%. The collector rejected
+that valid idle session and therefore retained its older 5% snapshot as an error.
+
+The companion now accepts this specific idle response and sends a known 0%
+window with reset sentinel 0. The MCU validates that sentinel only for zero
+usage and displays `No active window`, rather than fabricating a countdown or
+rejecting the whole provider. A missing window remains distinct from idle.
+
+Face selection is now a shared, native-tested policy. Provider/auth/network
+errors choose X.X before considering cached usage. Fresh low usage is happy;
+only an active quota at 80% or above is concerned. Waiting/stale/exhausted states
+are sleepy. Failed-provider values explicitly say `Last known` and include age.
+Quota warnings name the affected window, including weekly limits.
+
+The short fade previously hid the outgoing page at the beginning; the user was
+correct that it was not a push slide. Shared static card backgrounds now contain
+clipped per-provider value/caption/reset slots. Both providers' foregrounds,
+headings and footers move in opposite positions through a 420 ms eased slide;
+the outgoing content is hidden only at completion. Bars interpolate without
+moving entire opaque card backgrounds, and there is no opacity fade.
+
+All 25 tests passed, the HAL build had no warnings/errors, and firmware flash
+and verification succeeded. Live PC feed and SWD both showed Claude 0% current
+and 16% weekly with online polling and validity mask 15. On Claude page 1, the
+actual `current_face` byte was 0 (happy). Error X.X, low-usage happiness, stale
+sleepiness and high-weekly/expired-window behavior are covered by native tests.
+The animation reported both providers unhidden (mask 3) during an intermediate
+callback, with opposite value positions -95/+4. These diagnose intended widget
+state and do not prove a particular frame was displayed on the physical LCD.
+Physical visual confirmation was requested from the user.

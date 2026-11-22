@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 typedef enum { USAGE_WAITING, USAGE_OK, USAGE_STALE, USAGE_AUTH, USAGE_ERROR } UsageStatus;
+typedef enum { FACE_HAPPY, FACE_BLINK, FACE_SLEEPY, FACE_CONCERNED, FACE_XX } UsageFace;
 typedef struct {
     uint8_t valid;
     uint16_t used_tenths;
@@ -25,6 +26,7 @@ int Usage_Parse(const char *json, size_t length, UsageSnapshot *out);
 int Usage_ExtractHttp(const char *raw, size_t length, char *body, size_t capacity);
 void Usage_FormatCountdown(uint32_t seconds, char *out, size_t capacity);
 int Usage_WindowActive(const UsageWindow *window, uint32_t now);
+UsageFace Usage_GetFace(const UsageProvider *provider,uint32_t now,int network_ok,int connecting);
 typedef struct {
     volatile uint16_t head, tail;
     volatile uint8_t overflow;

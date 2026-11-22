@@ -14,7 +14,8 @@ def _window(value, now, *, claude=False, duration=None):
     used = value.get('used_percentage' if claude else 'usedPercent')
     reset = value.get('resets_at' if claude else 'resetsAt')
     minutes = duration if claude else value.get('windowDurationMins')
-    if not (_number(used) and 0 <= used <= 100 and _number(reset) and 0 < reset <= 4102444800
+    if not (_number(used) and 0 <= used <= 100 and _number(reset) and 0 <= reset <= 4102444800
+            and (reset != 0 or used == 0)
             and _number(minutes) and 0 < minutes <= 525600):
         return None
     return {'used_pct': round(used, 1), 'duration_mins': int(minutes), 'resets_at': int(reset)}

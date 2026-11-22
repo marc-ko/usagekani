@@ -14,6 +14,23 @@ SAMPLE = {'plan': 'pro', 'fetched_at': '2033-05-18T03:33:20Z',
 
 
 class ClaudeAPITests(unittest.TestCase):
+    def test_zero_usage_without_reset_is_idle_not_provider_failure(self):
+        payload = dict(SAMPLE, five_hour={'utilization': 0, 'resets_at': None})
+        value = normalize(payload, 2000000000)
+        self.assertEqual(value['status'], 'ok')
+        self.assertEqual(value['windows'][0], {'used_pct': 0, 'duration_mins': 300, 'resets_at': 0})
+        self.assertEqual(value['windows'][1]['used_pct'], 15)
+        store = Store()
+        config = {'claude_usage_url': 'https://example.invalid/usage', 'claude_usage_key': 'test-key'}
+        response = subprocess.CompletedProcess([], 0, json.dumps(payload)+'\n200', '')
+        with patch('companion.usagekani.claude_api.subprocess.run', return_value=response):
+            self.assertTrue(collect(config, store, 2000000000))
+        self.assertEqual(store.snapshot(2000000000)['claude']['status'], 'ok')
+
+    def test_missing_reset_with_nonzero_usage_is_not_invented_idle(self):
+        with self.assertRaises(ApiError):
+            normalize(dict(SAMPLE, five_hour={'utilization': 5, 'resets_at': None}), 2000000000)
+
     def test_maps_real_field_names_and_ignores_model_specific_windows(self):
         value = normalize(SAMPLE, 2000000000)
         self.assertEqual(value['observed_at'], 2000000000)

@@ -129,11 +129,12 @@ board in `SD_FindSCR`.
 
 ## Display and transport behavior
 
-- Provider pages rotate every eight seconds. Card surfaces stay fixed; the
-  incoming heading, percentages and bars use a short 240 ms slide-and-fade
-  (8–12 pixels) instead of moving full-width cards. Clawd and the clock remain
-  visible. The indicator glides and changes provider accent color. Codex is
-  teal and Claude orange.
+- Provider pages rotate every eight seconds. Card surfaces stay fixed while
+  outgoing and incoming headings, readings, captions, reset text and footers
+  push through clipped slots over 420 ms. Both pages remain visible until the
+  slide completes; there is no fade or immediate hiding of the old page. Bars
+  interpolate between providers. Clawd and the clock remain visible. The
+  indicator glides and changes provider accent color.
 - Two bars show percentage used and reset countdowns. Window labels follow the
   provider's actual duration; unavailable values show `--`.
 - Codex is sampled every 60 seconds; the cube polls every 30 seconds.
@@ -143,6 +144,12 @@ board in `SD_FindSCR`.
   quota warnings. The device never invents a reset to zero.
 - Clawd blinks, floats and wanders within its header area; concerned/sleepy
   expressions communicate quota state alongside explicit text.
+- Clawd uses **X.X** for provider/auth/network errors, including errors with
+  cached low usage. Fresh low usage is happy; only an active window at 80%+
+  causes the concerned face. Exhausted, waiting and stale data are sleepy.
+  Near-limit text names the affected window (for example `Weekly near limit`).
+- Failed-provider readings are dimmed and marked `Last known` with their age,
+  so a previous percentage is not presented as a fresh reading.
 - Continuous USART2 buffering handles multiple ESP8266 `+IPD` bursts. A complete
   HTTP 200 response with valid Content-Length and bounded JSON is required.
 
@@ -150,6 +157,10 @@ The status endpoint is `GET /v1/status` with an Authorization bearer device
 token. Its JSON has `version: 1`, UTC epoch `now`, and separate `codex`/`claude`
 objects containing `status`, `observed_at`, and two optional `windows`. Each
 window contains `used_pct`, `duration_mins`, `resets_at`. Null means unavailable.
+For a known idle window, the exporter can report 0% with a null reset; the
+companion encodes this as `used_pct: 0, resets_at: 0`. The cube shows **0% / No
+active window**. This sentinel is only valid for zero usage; no reset time is
+invented and the weekly window remains independently available.
 Responses stay below 2 KB and are not chunked. Fixtures are under `tests/fixtures/`.
 
 ## Checks
@@ -171,7 +182,10 @@ polls, last fetch error, four quota values in tenths of a percent, validity mask
 free FreeRTOS heap bytes, UI/network stack high-water marks in words, last bridge
 epoch, completed slide count. `Usage_AnimationDebug` adds completed slide count,
 frame-callback count for the latest slide, its elapsed milliseconds and free
-LVGL heap bytes. The callback count includes two initial positioning calls;
+LVGL heap bytes, followed by progress/visibility/positions from an intermediate
+animation callback. Visibility mask 3 means both providers were unhidden; the
+positions describe intended widget geometry, not a capture of the LCD. The
+callback count includes two initial positioning calls;
 subtract those when interpreting timed animation updates. It contains no
 credentials or account identifiers. Runtime
 checks do not substitute for a photo or visual inspection of the actual LCD.

@@ -13,7 +13,7 @@ import subprocess
 import time
 from urllib.parse import urlsplit
 
-from .model import normalize_claude
+from .model import normalize_claude, _number
 
 
 class ApiError(RuntimeError):
@@ -50,8 +50,12 @@ def normalize(payload, now):
             continue
         if not isinstance(window, dict):
             raise ApiError()
-        limits[key] = {'used_percentage': window.get('utilization'),
-                       'resets_at': _epoch(window.get('resets_at'))}
+        used=window.get('utilization')
+        reset=window.get('resets_at')
+        # Anthropic reports a known empty/idle session as 0% with no reset.
+        # Keep it distinct from a missing window and never invent a timestamp.
+        reset_epoch=0 if reset is None and _number(used) and used==0 else _epoch(reset)
+        limits[key] = {'used_percentage': used, 'resets_at': reset_epoch}
     result = normalize_claude({'rate_limits': limits}, observed)
     for key, window in zip(('five_hour', 'seven_day'), result['windows']):
         if key in limits and window is None:
