@@ -15,12 +15,21 @@ static UsageSnapshot shared_snapshot;
 static TickType_t shared_received;
 static uint8_t shared_valid, rtc_valid;
 static NetState network_state=NET_BOOT;
-static lv_obj_t *mascot, *face_layer, *title, *clock_label, *date_label, *footer, *led;
-static lv_obj_t *values[2], *kinds[2], *bars[2], *resets[2], *dots[2];
+typedef struct {
+    lv_obj_t *body, *title, *footer_root, *footer, *led;
+    lv_obj_t *values[2], *kinds[2], *bars[2], *resets[2];
+} ProviderPage;
+static ProviderPage pages[2];
+static lv_obj_t *mascot, *face_layer, *clock_label, *date_label, *page_indicator;
+static uint8_t shown_page, transition_from, transition_to, transitioning;
+static uint32_t transition_started;
+static MascotFace page_faces[2];
 static MascotFace current_face=(MascotFace)255;
 /* SWD-readable diagnostics for boards without the USB serial cable attached.
  * No credentials, hostnames or account identifiers are stored here. */
 volatile uint32_t Usage_Debug[16]={0x554b414eU};
+/* Completed slides, frame callbacks, last duration (ms), LVGL free bytes. */
+volatile uint32_t Usage_AnimationDebug[4];
 extern void lv_port_disp_init(void);
 
 static lv_obj_t *box(lv_obj_t *parent,int x,int y,int w,int h,uint32_t color,int radius)
@@ -83,37 +92,105 @@ static void create_dashboard(void)
     lv_obj_t *screen=lv_scr_act();lv_obj_clean(screen);lv_obj_clear_flag(screen,LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(screen,lv_color_hex(0x04070c),0);lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
     create_mascot(screen);
-    title=label(screen,128,14,106,&lv_font_montserrat_16,0x63e6be);
+    lv_obj_t *heading_clip=box(screen,126,0,114,36,0,0);
+    lv_obj_set_style_bg_opa(heading_clip,LV_OPA_TRANSP,0);
     clock_label=label(screen,128,40,106,&lv_font_montserrat_24,0xe6edf5);
     date_label=label(screen,128,74,110,&lv_font_montserrat_12,0x8c9aab);
     box(screen,10,98,220,1,0x1c2938,0);
-    for(int k=0;k<2;k++) {
-        lv_obj_t *card=box(screen,8,104+k*60,224,54,0x101925,8);
-        values[k]=label(card,10,2,100,&lv_font_montserrat_24,0xe6edf5);
-        kinds[k]=label(card,112,8,102,&lv_font_montserrat_12,0xaab8c8);
-        lv_obj_set_style_text_align(kinds[k],LV_TEXT_ALIGN_RIGHT,0);
-        bars[k]=lv_bar_create(card);lv_obj_remove_style_all(bars[k]);
-        lv_obj_set_pos(bars[k],10,32);lv_obj_set_size(bars[k],204,5);lv_bar_set_range(bars[k],0,1000);
-        lv_obj_set_style_bg_color(bars[k],lv_color_hex(0x263348),LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(bars[k],LV_OPA_COVER,LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(bars[k],LV_OPA_COVER,LV_PART_INDICATOR);
-        lv_obj_set_style_radius(bars[k],2,LV_PART_MAIN);lv_obj_set_style_radius(bars[k],2,LV_PART_INDICATOR);
-        resets[k]=label(card,10,39,208,&lv_font_montserrat_12,0xaab8c8);
+    lv_obj_t *body_clip=box(screen,0,101,240,119,0,0);
+    lv_obj_t *footer_clip=box(screen,38,221,194,19,0,0);
+    lv_obj_set_style_bg_opa(body_clip,LV_OPA_TRANSP,0);
+    lv_obj_set_style_bg_opa(footer_clip,LV_OPA_TRANSP,0);
+    for(unsigned page=0;page<2;page++) {
+        ProviderPage *w=&pages[page];
+        w->title=label(heading_clip,2,14,106,&lv_font_montserrat_16,page?0xf25745:0x63e6be);
+        w->body=box(body_clip,0,0,240,119,0,0);
+        w->footer_root=box(footer_clip,0,0,194,19,0,0);
+        lv_obj_set_style_bg_opa(w->body,LV_OPA_TRANSP,0);
+        lv_obj_set_style_bg_opa(w->footer_root,LV_OPA_TRANSP,0);
+        for(int k=0;k<2;k++) {
+            lv_obj_t *card=box(w->body,8,3+k*60,224,54,0x101925,8);
+            w->values[k]=label(card,10,2,100,&lv_font_montserrat_24,0xe6edf5);
+            w->kinds[k]=label(card,112,8,102,&lv_font_montserrat_12,0xaab8c8);
+            lv_obj_set_style_text_align(w->kinds[k],LV_TEXT_ALIGN_RIGHT,0);
+            w->bars[k]=lv_bar_create(card);lv_obj_remove_style_all(w->bars[k]);
+            lv_obj_set_pos(w->bars[k],10,32);lv_obj_set_size(w->bars[k],204,5);lv_bar_set_range(w->bars[k],0,1000);
+            lv_obj_set_style_bg_color(w->bars[k],lv_color_hex(0x263348),LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(w->bars[k],LV_OPA_COVER,LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(w->bars[k],LV_OPA_COVER,LV_PART_INDICATOR);
+            lv_obj_set_style_radius(w->bars[k],2,LV_PART_MAIN);lv_obj_set_style_radius(w->bars[k],2,LV_PART_INDICATOR);
+            w->resets[k]=label(card,10,39,208,&lv_font_montserrat_12,0xaab8c8);
+        }
+        w->led=box(w->footer_root,0,8,4,4,0x63e6be,2);
+        w->footer=label(w->footer_root,8,1,184,&lv_font_montserrat_12,0x8997a9);
+        if(page) {
+            lv_obj_add_flag(w->body,LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(w->title,LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(w->footer_root,LV_OBJ_FLAG_HIDDEN);
+        }
     }
-    dots[0]=box(screen,11,228,5,5,0x63e6be,3);dots[1]=box(screen,21,228,5,5,0x334258,3);
-    led=box(screen,38,229,4,4,0x63e6be,2);footer=label(screen,46,222,184,&lv_font_montserrat_12,0x8997a9);
+    box(screen,11,228,5,5,0x334258,3);box(screen,21,228,5,5,0x334258,3);
+    page_indicator=box(screen,11,228,7,5,0x63e6be,3);
 }
-static void update_dashboard(TickType_t tick)
+
+/* One timeline keeps the label, cards, footer and indicator synchronized.
+ * Each has its own clipped viewport, so nothing slides across Clawd/clock. */
+static void slide_frame(void *unused,int32_t progress)
 {
-    UsageSnapshot snapshot;TickType_t received;uint8_t valid,time_valid;NetState net;
-    taskENTER_CRITICAL();snapshot=shared_snapshot;received=shared_received;valid=shared_valid;
-    net=network_state;time_valid=rtc_valid;taskEXIT_CRITICAL();
-    unsigned seconds=tick/configTICK_RATE_HZ,page=(seconds/8U)%2U;
-    Usage_Debug[1]=seconds;Usage_Debug[2]=page;Usage_Debug[3]=(uint32_t)net;
-    Usage_Debug[11]=(uint32_t)xPortGetFreeHeapSize();
-    Usage_Debug[12]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
-    uint32_t now=valid?snapshot.now+(tick-received)/configTICK_RATE_HZ:0;
-    UsageProvider *provider=&snapshot.providers[page];
+    (void)unused;
+    int direction=transition_to>transition_from?1:-1;
+    ProviderPage *out=&pages[transition_from], *in=&pages[transition_to];
+    lv_obj_set_x(out->body,-direction*240*progress/1024);
+    lv_obj_set_x(in->body,direction*240*(1024-progress)/1024);
+    lv_obj_set_x(out->title,2-direction*114*progress/1024);
+    lv_obj_set_x(in->title,2+direction*114*(1024-progress)/1024);
+    lv_obj_set_x(out->footer_root,-direction*194*progress/1024);
+    lv_obj_set_x(in->footer_root,direction*194*(1024-progress)/1024);
+    lv_obj_set_x(page_indicator,11+10*transition_from+direction*10*progress/1024);
+    lv_color_t from=lv_color_hex(transition_from?0xf25745:0x63e6be);
+    lv_color_t to=lv_color_hex(transition_to?0xf25745:0x63e6be);
+    lv_obj_set_style_bg_color(page_indicator,lv_color_mix(to,from,(uint8_t)(progress*255/1024)),0);
+    Usage_AnimationDebug[1]++;
+}
+static void slide_ready(lv_anim_t *animation)
+{
+    (void)animation;
+    ProviderPage *out=&pages[transition_from];
+    lv_obj_add_flag(out->body,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(out->title,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(out->footer_root,LV_OBJ_FLAG_HIDDEN);
+    shown_page=transition_to;transitioning=0;
+    set_face(page_faces[shown_page]);
+    Usage_Debug[2]=shown_page;Usage_Debug[15]++;
+    Usage_AnimationDebug[0]++;
+    Usage_AnimationDebug[2]=lv_tick_elaps(transition_started);
+    lv_mem_monitor_t memory;lv_mem_monitor(&memory);
+    Usage_AnimationDebug[3]=(uint32_t)memory.free_size;
+}
+static void slide_to(uint8_t page)
+{
+    if(page==shown_page || transitioning)return;
+    transition_from=shown_page;transition_to=page;transitioning=1;
+    Usage_AnimationDebug[1]=0;
+    slide_frame(NULL,0); /* Position the incoming widgets before making them visible. */
+    ProviderPage *in=&pages[page];
+    lv_obj_clear_flag(in->body,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(in->title,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(in->footer_root,LV_OBJ_FLAG_HIDDEN);
+    transition_started=lv_tick_get();
+    lv_anim_t animation;lv_anim_init(&animation);
+    lv_anim_set_var(&animation,&transitioning);lv_anim_set_exec_cb(&animation,slide_frame);
+    lv_anim_set_values(&animation,0,1024);lv_anim_set_time(&animation,360);
+    lv_anim_set_path_cb(&animation,lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&animation,slide_ready);lv_anim_start(&animation);
+}
+static MascotFace render_provider(unsigned page,const UsageSnapshot *snapshot,uint32_t now,
+                                  NetState net,uint8_t valid,unsigned seconds)
+{
+    ProviderPage *widgets=&pages[page];
+    lv_obj_t *title=widgets->title,*footer=widgets->footer,*led=widgets->led;
+    lv_obj_t **values=widgets->values,**kinds=widgets->kinds,**bars=widgets->bars,**resets=widgets->resets;
+    const UsageProvider *provider=&snapshot->providers[page];
     uint32_t age=now>provider->observed_at?now-provider->observed_at:0;
     uint8_t disconnected=net!=NET_ONLINE;
     uint8_t stale=valid && (age>300U || provider->status!=USAGE_OK || disconnected);
@@ -121,7 +198,7 @@ static void update_dashboard(TickType_t tick)
     uint32_t accent=page?0xf25745:0x63e6be;char text[64];
     lv_label_set_text(title,page?"CLAUDE":"CODEX");lv_obj_set_style_text_color(title,lv_color_hex(accent),0);
     for(unsigned k=0;k<2;k++) {
-        UsageWindow *w=&provider->windows[k];
+        const UsageWindow *w=&provider->windows[k];
         uint8_t expired=w->valid && !Usage_WindowActive(w,now);
         if(expired)refreshing=1;
         if(Usage_WindowActive(w,now) && w->used_tenths>worst)worst=w->used_tenths;
@@ -135,7 +212,7 @@ static void update_dashboard(TickType_t tick)
         lv_obj_set_style_bg_color(bars[k],lv_color_hex(stale||expired?0x526176:(w->used_tenths>=800?0xf2b65b:accent)),LV_PART_INDICATOR);
         if(!w->valid)snprintf(text,sizeof(text),"Waiting for report");
         else Usage_FormatCountdown(w->resets_at>now?w->resets_at-now:0,text,sizeof(text));
-        lv_label_set_text(resets[k],text);lv_obj_set_style_bg_color(dots[k],lv_color_hex(k==page?accent:0x334258),0);
+        lv_label_set_text(resets[k],text);
     }
     if(net==NET_CONFIG)snprintf(text,sizeof(text),"Configure companion");
     else if(net==NET_BOOT || net==NET_WIFI)snprintf(text,sizeof(text),"Connecting WiFi");
@@ -154,7 +231,22 @@ static void update_dashboard(TickType_t tick)
     else if(worst>=1000 || !provider->observed_at || provider->status==USAGE_WAITING)face=FACE_SLEEPY;
     else if(stale || worst>=800)face=FACE_CONCERNED;
     else if(seconds%7U==0)face=FACE_BLINK;
-    set_face(face);lv_obj_set_x(mascot,8+(seconds/6U)%5U);
+    return face;
+}
+static void update_dashboard(TickType_t tick)
+{
+    UsageSnapshot snapshot;TickType_t received;uint8_t valid,time_valid;NetState net;
+    taskENTER_CRITICAL();snapshot=shared_snapshot;received=shared_received;valid=shared_valid;
+    net=network_state;time_valid=rtc_valid;taskEXIT_CRITICAL();
+    unsigned seconds=tick/configTICK_RATE_HZ;
+    uint32_t now=valid?snapshot.now+(tick-received)/configTICK_RATE_HZ:0;
+    for(unsigned page=0;page<2;page++)page_faces[page]=render_provider(page,&snapshot,now,net,valid,seconds);
+    slide_to((uint8_t)((seconds/8U)%2U));
+    set_face(page_faces[shown_page]);lv_obj_set_x(mascot,8+(seconds/6U)%5U);
+    Usage_Debug[1]=seconds;Usage_Debug[2]=shown_page;Usage_Debug[3]=(uint32_t)net;
+    Usage_Debug[11]=(uint32_t)xPortGetFreeHeapSize();
+    Usage_Debug[12]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
+    char text[64];
     RTC_TimeTypeDef rt={0};RTC_DateTypeDef rd={0};
     if(time_valid && HAL_RTC_GetTime(&hrtc,&rt,RTC_FORMAT_BIN)==HAL_OK && HAL_RTC_GetDate(&hrtc,&rd,RTC_FORMAT_BIN)==HAL_OK) {
         snprintf(text,sizeof(text),"%02u:%02u",rt.Hours,rt.Minutes);lv_label_set_text(clock_label,text);

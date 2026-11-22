@@ -106,3 +106,26 @@ native C transport/parser checks. Independent review findings were addressed
 with regressions. The companion was restarted on the reviewed code and left
 running. Direct LCD appearance remains unphotographed; live Claude acquisition
 is now verified.
+
+## Follow-up: animated provider rotation — 2026-11-22
+
+The user requested a modern slide when changing Codex/Claude pages. The firmware
+now uses a single 360 ms eased animation for outgoing/incoming usage cards,
+provider heading and status footer, with a gliding accent-colored page indicator.
+Codex slides left into Claude and the return slides right. Separate clipped
+viewports prevent the labels/cards from crossing Clawd or the clock. Both page
+widget sets remain allocated and hold their own data throughout the transition;
+no per-transition page allocation or mid-slide provider replacement is needed.
+
+The existing firmware was backed up locally, the HAL build passed without
+warnings/errors, and programming/verification succeeded. All 23 existing
+regression tests passed. A focused independent review found no material
+rendering/lifecycle issue.
+
+SWD confirmed 12 completed slides over 102 seconds, both provider pages observed,
+online polling, all four quota windows valid and no fetch errors. Free FreeRTOS
+heap was 7032 bytes; LVGL free heap remained around 26 KB. The most recent slide
+completed in approximately 350 ms. Its callback count includes initial setup
+placements; this is execution/timing evidence, not a measured LCD frame rate or
+proof of visual smoothness. The existing blocking SPI flush path is retained.
+Direct viewing of the physical panel is still needed to judge the motion.

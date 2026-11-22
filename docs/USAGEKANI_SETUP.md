@@ -129,7 +129,10 @@ board in `SD_FindSCR`.
 
 ## Display and transport behavior
 
-- Provider pages rotate every eight seconds; Codex is teal and Claude orange.
+- Provider pages rotate every eight seconds with a synchronized 360 ms eased
+  horizontal slide of the heading, usage cards and status footer. Clawd and the
+  clock remain visible. The indicator glides and changes provider accent color.
+  Codex is teal and Claude orange.
 - Two bars show percentage used and reset countdowns. Window labels follow the
   provider's actual duration; unavailable values show `--`.
 - Codex is sampled every 60 seconds; the cube polls every 30 seconds.
@@ -165,5 +168,9 @@ Without a USB serial cable, `Usage_Debug` is an SWD-readable 16-word diagnostic
 array. Words are: magic `0x554b414e`, UI seconds, page, network state, successful
 polls, last fetch error, four quota values in tenths of a percent, validity mask,
 free FreeRTOS heap bytes, UI/network stack high-water marks in words, last bridge
-epoch, reserved. It contains no credentials or account identifiers. Runtime
+epoch, completed slide count. `Usage_AnimationDebug` adds completed slide count,
+frame-callback count for the latest slide, its elapsed milliseconds and free
+LVGL heap bytes. The callback count includes two initial positioning calls;
+subtract those when interpreting timed animation updates. It contains no
+credentials or account identifiers. Runtime
 checks do not substitute for a photo or visual inspection of the actual LCD.
