@@ -129,3 +129,30 @@ completed in approximately 350 ms. Its callback count includes initial setup
 placements; this is execution/timing evidence, not a measured LCD frame rate or
 proof of visual smoothness. The existing blocking SPI flush path is retained.
 Direct viewing of the physical panel is still needed to judge the motion.
+
+## Follow-up: reduce animation lag — 2026-11-22
+
+The user reported that the full-width slide felt laggy. The refresh timer was
+already set to 10 ms, but hardware counters showed only about five timed
+animation callbacks in a roughly 430 ms transition. Rewriting large card areas
+through the blocking display link limits intermediate motion updates.
+
+A DMA experiment ran without transfer errors/timeouts but did not meaningfully
+increase the number of intermediate updates. That experiment was discarded;
+the shipped display driver and SPI clock remain unchanged. This avoids adding
+DMA recovery complexity without a demonstrated motion benefit.
+
+The replacement keeps card backgrounds and the status footer fixed, revealing
+the incoming name, percentages and bars with only 8–12 pixels of movement and
+a 240 ms fade. Both providers retain independent widgets and readings. Clawd,
+clock, reset text, page cadence and network collectors are preserved.
+
+The new build passed with no warnings/errors, all 23 regression tests passed,
+and ST-LINK programming/verification succeeded. A first lighter version measured
+four timed updates in roughly 235 ms. Removing the extra 10 ms UI-loop sleep
+only during the reveal improved this to six timed updates over about 269 ms,
+versus the original five over 430 ms: roughly twice the animation-update cadence
+over a much shorter travel distance. The normal idle UI delay remains unchanged.
+Counts exclude the two setup callbacks and are not a direct LCD frame-rate
+measurement. Live polling remained online with all four windows valid. The
+subjective feel still requires looking at the physical screen.

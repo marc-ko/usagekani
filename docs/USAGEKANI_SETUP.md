@@ -129,10 +129,11 @@ board in `SD_FindSCR`.
 
 ## Display and transport behavior
 
-- Provider pages rotate every eight seconds with a synchronized 360 ms eased
-  horizontal slide of the heading, usage cards and status footer. Clawd and the
-  clock remain visible. The indicator glides and changes provider accent color.
-  Codex is teal and Claude orange.
+- Provider pages rotate every eight seconds. Card surfaces stay fixed; the
+  incoming heading, percentages and bars use a short 240 ms slide-and-fade
+  (8–12 pixels) instead of moving full-width cards. Clawd and the clock remain
+  visible. The indicator glides and changes provider accent color. Codex is
+  teal and Claude orange.
 - Two bars show percentage used and reset countdowns. Window labels follow the
   provider's actual duration; unavailable values show `--`.
 - Codex is sampled every 60 seconds; the cube polls every 30 seconds.

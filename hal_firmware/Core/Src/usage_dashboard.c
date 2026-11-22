@@ -133,19 +133,22 @@ static void create_dashboard(void)
     page_indicator=box(screen,11,228,7,5,0x63e6be,3);
 }
 
-/* One timeline keeps the label, cards, footer and indicator synchronized.
- * Each has its own clipped viewport, so nothing slides across Clawd/clock. */
+/* Keep the large card surfaces fixed. Only small foreground regions move;
+ * full-width swipes saturate the LCD link and visibly skip animation steps. */
 static void slide_frame(void *unused,int32_t progress)
 {
     (void)unused;
     int direction=transition_to>transition_from?1:-1;
-    ProviderPage *out=&pages[transition_from], *in=&pages[transition_to];
-    lv_obj_set_x(out->body,-direction*240*progress/1024);
-    lv_obj_set_x(in->body,direction*240*(1024-progress)/1024);
-    lv_obj_set_x(out->title,2-direction*114*progress/1024);
-    lv_obj_set_x(in->title,2+direction*114*(1024-progress)/1024);
-    lv_obj_set_x(out->footer_root,-direction*194*progress/1024);
-    lv_obj_set_x(in->footer_root,direction*194*(1024-progress)/1024);
+    ProviderPage *in=&pages[transition_to];
+    lv_opa_t opacity=(lv_opa_t)(progress*255/1024);
+    lv_obj_set_x(in->title,2+direction*12*(1024-progress)/1024);
+    lv_obj_set_style_opa(in->title,opacity,0);
+    for(unsigned k=0;k<2;k++) {
+        lv_obj_set_x(in->values[k],10+direction*12*(1024-progress)/1024);
+        lv_obj_set_x(in->bars[k],10+direction*8*(1024-progress)/1024);
+        lv_obj_set_style_opa(in->values[k],opacity,0);
+        lv_obj_set_style_opa(in->bars[k],opacity,0);
+    }
     lv_obj_set_x(page_indicator,11+10*transition_from+direction*10*progress/1024);
     lv_color_t from=lv_color_hex(transition_from?0xf25745:0x63e6be);
     lv_color_t to=lv_color_hex(transition_to?0xf25745:0x63e6be);
@@ -173,14 +176,18 @@ static void slide_to(uint8_t page)
     transition_from=shown_page;transition_to=page;transitioning=1;
     Usage_AnimationDebug[1]=0;
     slide_frame(NULL,0); /* Position the incoming widgets before making them visible. */
-    ProviderPage *in=&pages[page];
+    ProviderPage *in=&pages[page],*out=&pages[transition_from];
+    lv_obj_add_flag(out->body,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(out->title,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(out->footer_root,LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(in->body,LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(in->title,LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(in->footer_root,LV_OBJ_FLAG_HIDDEN);
+    shown_page=page;
     transition_started=lv_tick_get();
     lv_anim_t animation;lv_anim_init(&animation);
     lv_anim_set_var(&animation,&transitioning);lv_anim_set_exec_cb(&animation,slide_frame);
-    lv_anim_set_values(&animation,0,1024);lv_anim_set_time(&animation,360);
+    lv_anim_set_values(&animation,0,1024);lv_anim_set_time(&animation,240);
     lv_anim_set_path_cb(&animation,lv_anim_path_ease_out);
     lv_anim_set_ready_cb(&animation,slide_ready);lv_anim_start(&animation);
 }
@@ -261,7 +268,10 @@ static void ui_task(void *arg)
     for(;;) {
         TickType_t now=xTaskGetTickCount();
         if(now/configTICK_RATE_HZ!=shown){shown=now/configTICK_RATE_HZ;update_dashboard(now);}
-        lv_timer_handler();vTaskDelay(pdMS_TO_TICKS(10));
+        lv_timer_handler();
+        /* A blocking flush already consumes most of an animation frame.
+         * Avoid adding a further 10 ms gap while the short reveal is active. */
+        vTaskDelay(pdMS_TO_TICKS(transitioning?1:10));
     }
 }
 static void network_task(void *arg)
