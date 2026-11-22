@@ -24,6 +24,10 @@ typedef struct {
 } ProviderPage;
 static ProviderPage pages[2];
 static lv_obj_t *mascot, *mascot_pages[2], *codex_error;
+static lv_obj_t *mascot_viewport, *attention_root, *attention_provider, *attention_state;
+static lv_obj_t *attention_title, *attention_reason, *attention_destination, *attention_count;
+static lv_obj_t *attention_action_bg, *attention_cue, *attention_cue_label;
+static uint8_t attention_active, attention_page;
 static lv_obj_t *face_layer, *clock_label, *date_label, *page_indicator;
 static lv_obj_t *usage_bars[2];
 static uint8_t shown_page, transition_from, transition_to, transitioning;
@@ -36,6 +40,9 @@ volatile uint32_t Usage_Debug[16]={0x554b414eU};
 /* Completed slides, callbacks, duration, LVGL free bytes, progress, visibility
  * mask and outgoing/incoming value positions at the last intermediate step. */
 volatile uint32_t Usage_AnimationDebug[8];
+/* Active provider (1/2, zero=none), kind, count, mask, enters, exits, page,
+ * and age of the most recent successful local feed. No prompt text. */
+volatile uint32_t Usage_AttentionDebug[8];
 extern void lv_port_disp_init(void);
 
 static lv_obj_t *box(lv_obj_t *parent,int x,int y,int w,int h,uint32_t color,int radius)
@@ -81,7 +88,7 @@ static void set_face(MascotFace face)
 }
 static void create_mascot(lv_obj_t *screen)
 {
-    lv_obj_t *viewport=box(screen,0,0,122,98,0,0);
+    lv_obj_t *viewport=box(screen,0,0,122,98,0,0);mascot_viewport=viewport;
     lv_obj_set_style_bg_opa(viewport,LV_OPA_TRANSP,0);
     for(unsigned page=0;page<2;page++) {
         mascot_pages[page]=box(viewport,0,0,122,98,0,0);
@@ -116,8 +123,8 @@ static void create_mascot(lv_obj_t *screen)
 }
 static void update_mascot_states(void)
 {
-    set_face(page_faces[1]);
-    if(page_faces[0]==FACE_XX)lv_obj_clear_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
+    set_face(attention_active && attention_page==1?FACE_HAPPY:page_faces[1]);
+    if(page_faces[0]==FACE_XX && !(attention_active && attention_page==0))lv_obj_clear_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
 }
 static lv_obj_t *clip(lv_obj_t *parent,int x,int y,int w,int h)
@@ -134,6 +141,26 @@ static void page_hidden(ProviderPage *page,uint8_t hidden)
         if(hidden)lv_obj_add_flag(objects[k],LV_OBJ_FLAG_HIDDEN);
         else lv_obj_clear_flag(objects[k],LV_OBJ_FLAG_HIDDEN);
     }
+}
+static void create_attention(lv_obj_t *screen)
+{
+    attention_root=box(screen,0,0,240,240,0x04070c,0);
+    attention_provider=label(attention_root,14,14,116,&lv_font_montserrat_12,0x63e6be);
+    lv_obj_t *state_bg=box(attention_root,151,12,77,21,0x282012,6);
+    attention_state=label(state_bg,2,3,73,&lv_font_montserrat_12,0xf4c874);
+    lv_obj_set_style_text_align(attention_state,LV_TEXT_ALIGN_CENTER,0);
+    attention_cue=box(attention_root,159,41,25,25,0x63e6be,6);
+    attention_cue_label=label(attention_cue,0,3,25,&lv_font_montserrat_16,0x04070c);
+    lv_obj_set_style_text_align(attention_cue_label,LV_TEXT_ALIGN_CENTER,0);
+    attention_title=label(attention_root,8,143,224,&lv_font_montserrat_24,0xedf3f9);
+    attention_reason=label(attention_root,8,175,224,&lv_font_montserrat_12,0xaebccc);
+    attention_action_bg=box(attention_root,29,198,182,24,0x112a27,6);
+    attention_destination=label(attention_action_bg,0,5,182,&lv_font_montserrat_12,0x63e6be);
+    attention_count=label(attention_root,8,225,224,&lv_font_montserrat_12,0x8e9bab);
+    lv_obj_t *centered[]={attention_title,attention_reason,attention_destination,attention_count};
+    for(unsigned i=0;i<sizeof(centered)/sizeof(centered[0]);i++)
+        lv_obj_set_style_text_align(centered[i],LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_add_flag(attention_root,LV_OBJ_FLAG_HIDDEN);
 }
 static void create_dashboard(void)
 {
@@ -174,6 +201,7 @@ static void create_dashboard(void)
     page_hidden(&pages[1],1);
     box(screen,11,228,5,5,0x334258,3);box(screen,21,228,5,5,0x334258,3);
     page_indicator=box(screen,11,228,7,5,0x63e6be,3);
+    create_attention(screen);
 }
 
 /* Both providers stay visible throughout a real push transition. Shared card
@@ -245,6 +273,60 @@ static void slide_to(uint8_t page)
     lv_anim_set_path_cb(&animation,lv_anim_path_ease_in_out);
     lv_anim_set_ready_cb(&animation,slide_ready);lv_anim_start(&animation);
 }
+static void update_attention(const UsageSnapshot *snapshot,uint32_t now,NetState net,
+                             uint8_t valid,uint32_t feed_age,unsigned seconds)
+{
+    uint8_t mask=Usage_AttentionMask(snapshot,now,valid && net==NET_ONLINE && feed_age<=10U);
+    Usage_AttentionDebug[3]=mask;Usage_AttentionDebug[7]=feed_age;
+    if(!mask) {
+        if(attention_active) {
+            attention_active=0;Usage_AttentionDebug[5]++;
+            lv_obj_set_parent(mascot_viewport,lv_scr_act());lv_obj_set_pos(mascot_viewport,0,0);
+            for(unsigned p=0;p<2;p++) {
+                lv_obj_set_x(mascot_pages[p],0);
+                if(p==shown_page)lv_obj_clear_flag(mascot_pages[p],LV_OBJ_FLAG_HIDDEN);
+                else lv_obj_add_flag(mascot_pages[p],LV_OBJ_FLAG_HIDDEN);
+            }
+            lv_obj_add_flag(attention_root,LV_OBJ_FLAG_HIDDEN);
+        }
+        Usage_AttentionDebug[0]=0;Usage_AttentionDebug[1]=0;Usage_AttentionDebug[2]=0;
+        return;
+    }
+    if(transitioning) {
+        lv_anim_del(&transitioning,slide_frame);slide_frame(NULL,1024);slide_ready(NULL);
+    }
+    if(!attention_active) {
+        attention_active=1;Usage_AttentionDebug[4]++;
+        lv_obj_set_parent(mascot_viewport,attention_root);lv_obj_set_pos(mascot_viewport,60,32);
+        lv_obj_move_foreground(attention_cue);
+        lv_obj_clear_flag(attention_root,LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(attention_root);
+    }
+    attention_page=mask==3?(uint8_t)((seconds/4U)%2U):(mask==1?0:1);
+    for(unsigned p=0;p<2;p++) {
+        lv_obj_set_x(mascot_pages[p],0);
+        if(p==attention_page)lv_obj_clear_flag(mascot_pages[p],LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(mascot_pages[p],LV_OBJ_FLAG_HIDDEN);
+    }
+    const UsageAttention *a=&snapshot->providers[attention_page].attention;
+    uint8_t approval=a->kind==ATTENTION_APPROVAL;
+    uint32_t accent=attention_page?0xf25745:0x63e6be;
+    lv_label_set_text(attention_provider,attention_page?"CLAUDE":"CODEX");
+    lv_obj_set_style_text_color(attention_provider,lv_color_hex(accent),0);
+    lv_label_set_text(attention_state,approval?"APPROVAL":"WAITING");
+    lv_label_set_text(attention_cue_label,approval?"!":"?");
+    lv_obj_set_style_bg_color(attention_cue,lv_color_hex(accent),0);
+    lv_label_set_text(attention_title,approval?"Your approval?":"I need you.");
+    lv_label_set_text(attention_reason,approval?"Permission to continue":"Waiting for your answer");
+    lv_label_set_text(attention_destination,attention_page?
+        (approval?"Review in Claude":"Reply in Claude"):(approval?"Review in Codex":"Reply in Codex"));
+    lv_obj_set_style_text_color(attention_destination,lv_color_hex(accent),0);
+    lv_obj_set_style_bg_color(attention_action_bg,lv_color_hex(attention_page?0x2b1919:0x112a27),0);
+    char text[32];snprintf(text,sizeof(text),"%u request%s waiting",a->count,a->count==1?"":"s");
+    lv_label_set_text(attention_count,text);
+    Usage_AttentionDebug[0]=attention_page+1;Usage_AttentionDebug[1]=a->kind;
+    Usage_AttentionDebug[2]=a->count;Usage_AttentionDebug[6]=attention_page;
+}
 static MascotFace render_provider(unsigned page,const UsageSnapshot *snapshot,uint32_t now,
                                   NetState net,uint8_t valid,unsigned seconds)
 {
@@ -309,8 +391,9 @@ static void update_dashboard(TickType_t tick)
     unsigned seconds=tick/configTICK_RATE_HZ;
     uint32_t now=valid?snapshot.now+(tick-received)/configTICK_RATE_HZ:0;
     for(unsigned page=0;page<2;page++)page_faces[page]=render_provider(page,&snapshot,now,net,valid,seconds);
-    slide_to((uint8_t)((seconds/8U)%2U));
-    if(!transitioning)for(unsigned k=0;k<2;k++) {
+    update_attention(&snapshot,now,net,valid,(tick-received)/configTICK_RATE_HZ,seconds);
+    if(!attention_active)slide_to((uint8_t)((seconds/8U)%2U));
+    if(!attention_active && !transitioning)for(unsigned k=0;k<2;k++) {
         lv_bar_set_value(usage_bars[k],pages[shown_page].bar_values[k],LV_ANIM_OFF);
         lv_obj_set_style_bg_color(usage_bars[k],lv_color_hex(pages[shown_page].bar_colors[k]),LV_PART_INDICATOR);
     }
@@ -373,7 +456,9 @@ static void network_task(void *arg)
             taskENTER_CRITICAL();network_state=NET_OFFLINE;taskEXIT_CRITICAL();printf("Usagekani feed error %u\r\n",error);
             if(++failures>=3){esp8266_sta_connect();failures=0;}
         }
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        /* Fast local activity delivery; external quota collectors keep their
+         * independent 30/60-second schedules on the PC. */
+        vTaskDelay(pdMS_TO_TICKS(error?5000:2000));
     }
 }
 void Usage_CreateTasks(void)

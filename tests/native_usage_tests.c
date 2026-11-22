@@ -20,6 +20,34 @@ int main(int argc, char **argv)
     assert(snapshot.providers[0].status == USAGE_OK);
     assert(snapshot.providers[0].windows[0].used_tenths == 160);
     assert(snapshot.providers[0].windows[1].duration_mins == 10080);
+    assert(snapshot.providers[0].attention.kind == ATTENTION_NONE);
+    char attention_json[768];
+    const char *attention_format = "{\"version\":1,\"now\":2000000000,\"codex\":{\"status\":\"error\",\"observed_at\":0,\"windows\":[null,null],\"attention\":%s},\"claude\":{\"status\":\"waiting\",\"observed_at\":0,\"windows\":[null,null]}}";
+    snprintf(attention_json,sizeof(attention_json),attention_format,
+        "{\"kind\":\"question\",\"count\":2,\"observed_at\":2000000000}");
+    UsageSnapshot attention_snapshot;
+    assert(Usage_Parse(attention_json,strlen(attention_json),&attention_snapshot)==0);
+    assert(attention_snapshot.providers[0].attention.kind==ATTENTION_QUESTION);
+    assert(attention_snapshot.providers[0].attention.count==2);
+    assert(Usage_AttentionMask(&attention_snapshot,2000000005U,1)==1);
+    assert(Usage_AttentionMask(&attention_snapshot,2000000011U,1)==0);
+    assert(Usage_AttentionMask(&attention_snapshot,2000000005U,0)==0);
+    attention_snapshot.providers[1].attention=(UsageAttention){ATTENTION_APPROVAL,1,2000000000U};
+    assert(Usage_AttentionMask(&attention_snapshot,2000000005U,1)==3);
+    const char *bad_attention[]={
+        "{\"kind\":\"question\",\"count\":0,\"observed_at\":2000000000}",
+        "{\"kind\":\"question\",\"count\":65,\"observed_at\":2000000000}",
+        "{\"kind\":\"unknown\",\"count\":1,\"observed_at\":2000000000}",
+        "{\"kind\":\"approval\",\"count\":1,\"observed_at\":2000000061}",
+        "{\"kind\":\"question\",\"count\":1,\"count\":2,\"observed_at\":2000000000}",
+        "false", "[]", "\"null\""};
+    for(unsigned i=0;i<sizeof(bad_attention)/sizeof(bad_attention[0]);i++) {
+        snprintf(attention_json,sizeof(attention_json),attention_format,bad_attention[i]);
+        assert(Usage_Parse(attention_json,strlen(attention_json),&attention_snapshot)!=0);
+    }
+    snprintf(attention_json,sizeof(attention_json),attention_format,"null");
+    assert(Usage_Parse(attention_json,strlen(attention_json),&attention_snapshot)==0);
+    assert(Usage_AttentionMask(&attention_snapshot,2000000000U,1)==0);
     assert(Usage_WindowActive(&snapshot.providers[0].windows[0],2000000000U));
     assert(!Usage_WindowActive(&snapshot.providers[0].windows[0],2000004000U));
     UsageRxBuffer ring={0};char received[16];

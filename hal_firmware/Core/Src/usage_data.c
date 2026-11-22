@@ -23,6 +23,17 @@ UsageFace Usage_GetFace(const UsageProvider *provider,uint32_t now,int network_o
     if(worst>=1000)return FACE_SLEEPY;
     return worst>=800?FACE_CONCERNED:FACE_HAPPY;
 }
+uint8_t Usage_AttentionMask(const UsageSnapshot *snapshot,uint32_t now,int network_ok)
+{
+    uint8_t mask=0;
+    if(!network_ok)return 0;
+    for(unsigned p=0;p<2;p++) {
+        const UsageAttention *a=&snapshot->providers[p].attention;
+        if(a->kind && a->count && a->observed_at &&
+           (a->observed_at>=now || now-a->observed_at<=10U))mask|=1U<<p;
+    }
+    return mask;
+}
 void UsageRx_Push(UsageRxBuffer *ring, char byte)
 {
     uint16_t next=(uint16_t)((ring->head+1U)&4095U);
@@ -143,7 +154,7 @@ static int field(const Json *j, int object, const char *key)
     if(object<0 || j->t[object].type!='{') return -1;
     for(int i=object+1;i<j->t[object].next;) {
         int v=i+1;
-        if(equal(j,i,key)) { if(found>=0) return -1; found=v; }
+        if(equal(j,i,key)) { if(found>=0) return -2; found=v; }
         i=j->t[v].next;
     }
     return found;
@@ -171,6 +182,20 @@ static int provider(const Json *j,int i,UsageProvider *out)
     int status=field(j,i,"status"), array=field(j,i,"windows"), known=0;
     for(int k=0;k<5;k++) if(status>=0 && j->t[status].type=='"' && equal(j,status,names[k])) {out->status=(UsageStatus)k;known=1;}
     if(!known || integer(j,field(j,i,"observed_at"),&out->observed_at) || array<0 || j->t[array].type!='[') return -1;
+    int attention=field(j,i,"attention");
+    if(attention==-2)return -1;
+    if(attention>=0 && !(j->t[attention].type=='n' && equal(j,attention,"null"))) {
+        uint32_t count;
+        int kind=field(j,attention,"kind");
+        if(kind<0 || j->t[kind].type!='"' ||
+           integer(j,field(j,attention,"count"),&count) || !count || count>64 ||
+           integer(j,field(j,attention,"observed_at"),&out->attention.observed_at) ||
+           !out->attention.observed_at)return -1;
+        if(equal(j,kind,"question"))out->attention.kind=ATTENTION_QUESTION;
+        else if(equal(j,kind,"approval"))out->attention.kind=ATTENTION_APPROVAL;
+        else return -1;
+        out->attention.count=(uint8_t)count;
+    }
     int w=array+1;
     for(int k=0;k<2;k++) {
         double used;
@@ -201,7 +226,8 @@ int Usage_Parse(const char *json,size_t length,UsageSnapshot *out)
        integer(&j,field(&j,0,"now"),&result.now) || result.now<1577836800U ||
        provider(&j,field(&j,0,"codex"),&result.providers[0]) ||
        provider(&j,field(&j,0,"claude"),&result.providers[1])) return -1;
-    for(int k=0;k<2;k++) if(result.providers[k].observed_at>result.now+60U) return -1;
+    for(int k=0;k<2;k++) if(result.providers[k].observed_at>result.now+60U ||
+        result.providers[k].attention.observed_at>result.now+60U)return -1;
     *out=result;return 0;
 }
 
