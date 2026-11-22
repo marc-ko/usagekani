@@ -1,8 +1,9 @@
 # Usagekani setup
 
 Usagekani is a PC-on desk monitor for Codex and Claude subscription usage.
-The existing STM32F405/ESP8266 cube displays two rotating pages and retains the
-original orange pixel Clawd. It uses no cloud service of its own.
+The existing STM32F405/ESP8266 cube displays two rotating pages: the approved
+white terminal badge for Codex and the original orange pixel Clawd for Claude.
+It uses no cloud service of its own.
 
 ## Windows companion
 
@@ -133,8 +134,9 @@ board in `SD_FindSCR`.
   outgoing and incoming headings, readings, captions, reset text and footers
   push through clipped slots over 420 ms. Both pages remain visible until the
   slide completes; there is no fade or immediate hiding of the old page. Bars
-  interpolate between providers. Clawd and the clock remain visible. The
-  indicator glides and changes provider accent color.
+  interpolate between providers. Each provider's mascot moves through a separate
+  clipped header viewport with its page; the clock stays fixed. The indicator
+  glides and changes provider accent color.
 - Two bars show percentage used and reset countdowns. Window labels follow the
   provider's actual duration; unavailable values show `--`.
 - Codex is sampled every 60 seconds; the cube polls every 30 seconds.
@@ -142,12 +144,18 @@ board in `SD_FindSCR`.
   last-known values. A failed Claude cache cannot invalidate Codex.
 - Expired windows are dimmed and show `Refreshing`; they do not trigger active
   quota warnings. The device never invents a reset to zero.
-- Clawd blinks, floats and wanders within its header area; concerned/sleepy
+- Claude's Clawd blinks, floats and wanders within its header area; concerned/sleepy
   expressions communicate quota state alongside explicit text.
 - Clawd uses **X.X** for provider/auth/network errors, including errors with
   cached low usage. Fresh low usage is happy; only an active window at 80%+
   causes the concerned face. Exhausted, waiting and stale data are sleepy.
   Near-limit text names the affected window (for example `Weekly near limit`).
+- Codex keeps the supplied terminal glyph at healthy usage. Provider/auth/network
+  errors replace only that glyph with **X.X**, retaining the white silhouette.
+  Other quota/freshness states remain explicit in the readings and status text.
+  The source image is `assets/usagekani/codex-mascot-source.jpg`; regenerate its
+  92 x 94 alpha-only LVGL header with `./scripts/convert_codex_mascot.ps1` on
+  Windows PowerShell 7+. The checked-in header needs no build-time image tools.
 - Failed-provider readings are dimmed and marked `Last known` with their age,
   so a previous percentage is not presented as a fresh reading.
 - Continuous USART2 buffering handles multiple ESP8266 `+IPD` bursts. A complete

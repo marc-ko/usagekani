@@ -192,3 +192,26 @@ The animation reported both providers unhidden (mask 3) during an intermediate
 callback, with opposite value positions -95/+4. These diagnose intended widget
 state and do not prove a particular frame was displayed on the physical LCD.
 Physical visual confirmation was requested from the user.
+
+## Follow-up: provider-specific Codex mascot — 2026-11-22
+
+The user supplied a terminal badge and approved its white-on-dark screen preview.
+Codex now displays that badge; Claude retains the existing orange Clawd geometry,
+palette, float/blink behavior and face policy. Both mascot roots join the existing
+420 ms page push through a clipped header viewport. The clock remains fixed.
+Codex provider/auth/network errors show X.X in place of the terminal glyph.
+
+The original supplied JPEG is preserved under `assets/usagekani/`. A deterministic
+PowerShell converter applies the approved preview's inverse/high-contrast mask
+and emits a 92 x 94, 8,648-byte alpha image in flash. The firmware requires no
+runtime JPEG decoder, scaling or image-buffer allocation. Regenerating the header
+produced an identical hash. The converted normal and X.X images were inspected.
+
+All 25 existing regression tests passed and the HAL build completed without
+warnings/errors. Focused independent review found no material issue in LVGL
+image layout, clipping, page lifecycle or error-state behavior. The previous
+firmware was backed up locally; ST-LINK programming and verification succeeded.
+Initial SWD diagnostics showed page rotation, online polling, all four quota
+windows valid and no fetch errors. LVGL free heap was 24,784 bytes and FreeRTOS
+free heap was 7,024 bytes. These verify execution, not physical LCD appearance;
+the on-device look and motion still require the user's observation.

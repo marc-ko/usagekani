@@ -4,6 +4,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "lvgl.h"
+#include "usage_codex_mascot.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -22,7 +23,8 @@ typedef struct {
     uint32_t bar_colors[2];
 } ProviderPage;
 static ProviderPage pages[2];
-static lv_obj_t *mascot, *face_layer, *clock_label, *date_label, *page_indicator;
+static lv_obj_t *mascot, *mascot_pages[2], *codex_error;
+static lv_obj_t *face_layer, *clock_label, *date_label, *page_indicator;
 static lv_obj_t *usage_bars[2];
 static uint8_t shown_page, transition_from, transition_to, transitioning;
 static uint32_t transition_started;
@@ -79,8 +81,28 @@ static void set_face(MascotFace face)
 }
 static void create_mascot(lv_obj_t *screen)
 {
+    lv_obj_t *viewport=box(screen,0,0,122,98,0,0);
+    lv_obj_set_style_bg_opa(viewport,LV_OPA_TRANSP,0);
+    for(unsigned page=0;page<2;page++) {
+        mascot_pages[page]=box(viewport,0,0,122,98,0,0);
+        lv_obj_set_style_bg_opa(mascot_pages[page],LV_OPA_TRANSP,0);
+    }
+    /* The approved white-on-dark badge is an alpha-only image in flash.
+     * No decoder, image allocation or runtime scaling is needed. */
+    lv_obj_t *badge=lv_img_create(mascot_pages[0]);
+    lv_img_set_src(badge,&usage_codex_mascot);lv_obj_set_pos(badge,18,2);
+    lv_obj_set_style_img_recolor(badge,lv_color_hex(0xffffff),0);
+    lv_obj_set_style_img_recolor_opa(badge,LV_OPA_COVER,0);
+    /* Cover only the terminal glyph on failure, keeping the badge silhouette. */
+    codex_error=label(mascot_pages[0],41,33,44,&lv_font_montserrat_16,0x04070c);
+    lv_obj_set_height(codex_error,32);lv_label_set_text(codex_error,"X.X");
+    lv_obj_set_style_text_align(codex_error,LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_set_style_pad_top(codex_error,8,0);
+    lv_obj_set_style_bg_color(codex_error,lv_color_hex(0xffffff),0);
+    lv_obj_set_style_bg_opa(codex_error,LV_OPA_COVER,0);
+    lv_obj_add_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
     /* Original Clawd pixel unit, silhouette, palette and facial geometry. */
-    mascot=box(screen,10,8,108,84,0,0);lv_obj_set_style_bg_opa(mascot,LV_OPA_TRANSP,0);
+    mascot=box(mascot_pages[1],10,8,108,84,0,0);lv_obj_set_style_bg_opa(mascot,LV_OPA_TRANSP,0);
     pixel(mascot,3,0,12,4,0xf25745);pixel(mascot,0,4,18,4,0xf25745);pixel(mascot,3,8,12,2,0xf25745);
     const int legs[]={3,6,10,13};
     for(unsigned k=0;k<4;k++)pixel(mascot,legs[k],10,2,4,0xf25745);
@@ -90,6 +112,13 @@ static void create_mascot(lv_obj_t *screen)
     lv_anim_set_exec_cb(&anim,(lv_anim_exec_xcb_t)lv_obj_set_y);
     lv_anim_set_values(&anim,8,4);lv_anim_set_time(&anim,850);lv_anim_set_playback_time(&anim,850);
     lv_anim_set_repeat_count(&anim,LV_ANIM_REPEAT_INFINITE);lv_anim_set_path_cb(&anim,lv_anim_path_ease_in_out);lv_anim_start(&anim);
+    lv_obj_add_flag(mascot_pages[1],LV_OBJ_FLAG_HIDDEN);
+}
+static void update_mascot_states(void)
+{
+    set_face(page_faces[1]);
+    if(page_faces[0]==FACE_XX)lv_obj_clear_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(codex_error,LV_OBJ_FLAG_HIDDEN);
 }
 static lv_obj_t *clip(lv_obj_t *parent,int x,int y,int w,int h)
 {
@@ -154,6 +183,8 @@ static void slide_frame(void *unused,int32_t progress)
     (void)unused;
     int direction=transition_to>transition_from?1:-1;
     ProviderPage *in=&pages[transition_to],*out=&pages[transition_from];
+    lv_obj_set_x(mascot_pages[transition_from],-direction*122*progress/1024);
+    lv_obj_set_x(mascot_pages[transition_to],direction*122*(1024-progress)/1024);
     lv_obj_set_x(out->title,2-direction*114*progress/1024);
     lv_obj_set_x(in->title,2+direction*114*(1024-progress)/1024);
     lv_obj_set_x(out->footer_root,-direction*194*progress/1024);
@@ -190,8 +221,9 @@ static void slide_ready(lv_anim_t *animation)
     (void)animation;
     ProviderPage *out=&pages[transition_from];
     page_hidden(out,1);
+    lv_obj_add_flag(mascot_pages[transition_from],LV_OBJ_FLAG_HIDDEN);
     shown_page=transition_to;transitioning=0;
-    set_face(page_faces[shown_page]);
+    update_mascot_states();
     Usage_Debug[2]=shown_page;Usage_Debug[15]++;
     Usage_AnimationDebug[0]++;
     Usage_AnimationDebug[2]=lv_tick_elaps(transition_started);
@@ -205,6 +237,7 @@ static void slide_to(uint8_t page)
     Usage_AnimationDebug[1]=0;
     slide_frame(NULL,0); /* Position the incoming widgets before making them visible. */
     page_hidden(&pages[page],0);
+    lv_obj_clear_flag(mascot_pages[page],LV_OBJ_FLAG_HIDDEN);
     transition_started=lv_tick_get();
     lv_anim_t animation;lv_anim_init(&animation);
     lv_anim_set_var(&animation,&transitioning);lv_anim_set_exec_cb(&animation,slide_frame);
@@ -281,7 +314,7 @@ static void update_dashboard(TickType_t tick)
         lv_bar_set_value(usage_bars[k],pages[shown_page].bar_values[k],LV_ANIM_OFF);
         lv_obj_set_style_bg_color(usage_bars[k],lv_color_hex(pages[shown_page].bar_colors[k]),LV_PART_INDICATOR);
     }
-    set_face(page_faces[shown_page]);lv_obj_set_x(mascot,8+(seconds/6U)%5U);
+    update_mascot_states();lv_obj_set_x(mascot,8+(seconds/6U)%5U);
     Usage_Debug[1]=seconds;Usage_Debug[2]=shown_page;Usage_Debug[3]=(uint32_t)net;
     Usage_Debug[11]=(uint32_t)xPortGetFreeHeapSize();
     Usage_Debug[12]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
