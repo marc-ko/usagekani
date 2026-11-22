@@ -4,8 +4,10 @@ import json
 import logging
 import threading
 import time
+from pathlib import Path
 from .claude import state_dir
 from .attention import read_attention
+from .codex_attention import CodexWatcher
 from .claude_api import collect as collect_claude_api
 from .codex import QuotaError, read_limits
 from .model import Store, normalize_codex, validate_cached_provider
@@ -72,8 +74,13 @@ def main():
                 stop.wait(2)
 
     def attention_loop():
+        watcher = CodexWatcher(Path.home()/'.codex', directory/'attention.json', directory/'codex-attention-cursor.json')
         while not stop.is_set():
-            store.set_attention(read_attention(directory / 'attention.json', int(time.time())))
+            try:
+                watcher.poll()
+                store.set_attention(read_attention(directory / 'attention.json', int(time.time())))
+            except (OSError, ValueError, TimeoutError):
+                logging.warning('Attention source temporarily unavailable')
             stop.wait(0.25)
 
     for collect in (codex_loop, claude_loop, attention_loop):
