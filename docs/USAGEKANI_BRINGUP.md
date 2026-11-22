@@ -235,3 +235,25 @@ Three diagnostic regression tests were observed failing before implementation.
 All 28 companion/native tests now pass, including secret exclusion and duplicate
 failure/recovery handling. This improves evidence for the next interruption;
 it does not establish or claim to fix the previous upstream failure.
+
+### Confirmed recurring HTTP 502 and hardware reset
+
+Later inspection caught repeated `http_502` failures and recoveries in the new
+log. The exact production fetch reproduced HTTP 502 with a non-JSON body of
+`error code: 502`; the unauthenticated health route still returned HTTP 200.
+Successful direct usage responses occurred between these failures. The failure
+is therefore present at the configured usage service, rather than merely being
+an inferred historical interruption or a normalization error.
+
+At the user's request, ST-LINK captured the MCU snapshot and reset the board.
+The cube reconnected and continued successful PC-feed polls. Both before and
+after reset, its Claude status was `USAGE_ERROR` (4), its actual face byte was
+`FACE_XX` (4), and cached Claude readings remained 0%/16%. The PC was explicitly
+sending that error state while preserving the previous observation timestamp.
+Resetting the cube cannot clear an error still being supplied by the companion.
+
+Despite the connected Type-C cable, Windows enumerated only the existing COM1;
+no USB UART port was available for serial capture. A USB port-reset failure
+(Code 43) was also present, but its association with the cube was not established.
+ST-LINK remained operational. Further upstream repair requires the API backend
+source/deployment; the available GitHub repository search found only Usagekani.
